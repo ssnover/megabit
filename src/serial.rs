@@ -3,16 +3,18 @@ use async_channel::{Receiver, Sender};
 use std::{
     io,
     path::{Path, PathBuf},
-    time::Duration,
 };
-use tokio::io::{AsyncWriteExt, ReadHalf, WriteHalf};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::sync::oneshot;
 use tokio_serial::{SerialPortBuilderExt, SerialStream};
 
 #[derive(Clone, Debug)]
 pub enum SerialMessage {
     SetLedState(SetLedState),
+    SetLedStateResponse(SetLedStateResponse),
     SetRgbState(SetRgbState),
+    SetRgbStateResponse(SetRgbStateResponse),
+    ReportButtonPress,
 }
 
 impl SerialMessage {
@@ -24,14 +26,82 @@ impl SerialMessage {
                 out.push(0x00);
                 out.append(&mut inner.to_bytes())
             }
+            SerialMessage::SetLedStateResponse(inner) => {
+                out.push(0xde);
+                out.push(0x01);
+                out.append(&mut inner.to_bytes())
+            }
             SerialMessage::SetRgbState(inner) => {
                 out.push(0xde);
                 out.push(0x02);
                 out.append(&mut inner.to_bytes())
             }
+            SerialMessage::SetRgbStateResponse(inner) => {
+                out.push(0xde);
+                out.push(0x03);
+                out.append(&mut inner.to_bytes())
+            }
+            SerialMessage::ReportButtonPress => {
+                out.push(0xde);
+                out.push(0x04);
+            }
         }
 
         out
+    }
+
+    pub fn try_from_bytes(data: &[u8]) -> io::Result<Self> {
+        if data.len() >= 2 {
+            match (data[0], data[1]) {
+                (0xde, 0x01) => Ok(SerialMessage::SetLedStateResponse(
+                    SetLedStateResponse::try_from_bytes(&data[2..])?,
+                )),
+                (0xde, 0x03) => Ok(SerialMessage::SetRgbStateResponse(
+                    SetRgbStateResponse::try_from_bytes(&data[2..])?,
+                )),
+                (0xde, 0x04) => Ok(SerialMessage::ReportButtonPress),
+                _ => {
+                    tracing::error!(
+                        "Unexpected serial message kind 0x{:02x}{:02x}",
+                        data[0],
+                        data[1]
+                    );
+                    Err(io::ErrorKind::InvalidData.into())
+                }
+            }
+        } else {
+            Err(io::ErrorKind::InvalidData.into())
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+#[repr(u8)]
+pub enum Status {
+    Success = 0,
+    Failure = 1,
+    InProgress = 2,
+}
+
+impl TryFrom<u8> for Status {
+    type Error = io::Error;
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Status::Success),
+            1 => Ok(Status::Failure),
+            2 => Ok(Status::InProgress),
+            _ => Err(io::ErrorKind::InvalidData.into()),
+        }
+    }
+}
+
+impl From<Status> for u8 {
+    fn from(value: Status) -> Self {
+        match value {
+            Status::Success => 0,
+            Status::Failure => 1,
+            Status::InProgress => 2,
+        }
     }
 }
 
@@ -47,6 +117,27 @@ impl SetLedState {
 }
 
 #[derive(Clone, Debug)]
+pub struct SetLedStateResponse {
+    status: Status,
+}
+
+impl SetLedStateResponse {
+    fn to_bytes(self) -> Vec<u8> {
+        vec![self.status.into()]
+    }
+
+    fn try_from_bytes(data: &[u8]) -> io::Result<Self> {
+        if data.len() == 1 {
+            Ok(Self {
+                status: Status::try_from(data[0])?,
+            })
+        } else {
+            Err(io::ErrorKind::InvalidData.into())
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct SetRgbState {
     r: u8,
     g: u8,
@@ -56,6 +147,27 @@ pub struct SetRgbState {
 impl SetRgbState {
     pub fn to_bytes(self) -> Vec<u8> {
         vec![self.r, self.g, self.b]
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SetRgbStateResponse {
+    status: Status,
+}
+
+impl SetRgbStateResponse {
+    fn to_bytes(self) -> Vec<u8> {
+        vec![self.status.into()]
+    }
+
+    fn try_from_bytes(data: &[u8]) -> io::Result<Self> {
+        if data.len() == 1 {
+            Ok(Self {
+                status: Status::try_from(data[0])?,
+            })
+        } else {
+            Err(io::ErrorKind::InvalidData.into())
+        }
     }
 }
 
@@ -171,11 +283,40 @@ async fn handle_requests(
 }
 
 async fn handle_serial_msgs(
-    serial_rx: ReadHalf<SerialStream>,
+    mut serial_rx: ReadHalf<SerialStream>,
     incoming_msg_tx: Sender<SerialMessage>,
 ) -> anyhow::Result<()> {
+    let mut incoming_serial_buffer = Vec::with_capacity(1024);
     loop {
-        tokio::time::sleep(Duration::from_secs(100)).await;
+        match serial_rx.read_buf(&mut incoming_serial_buffer).await {
+            Ok(n) => {
+                tracing::debug!("Received {n} bytes from the serial port");
+                if let Ok(decoded_data) = cobs::decode_vec(&incoming_serial_buffer[..]) {
+                    tracing::debug!(
+                        "Decoded a payload of {} bytes from buffer of {} bytes",
+                        decoded_data.len(),
+                        incoming_serial_buffer.len()
+                    );
+                    if let Ok(msg) = SerialMessage::try_from_bytes(&decoded_data[..]) {
+                        tracing::debug!("Decoded a message: {msg:?}");
+                        if let Err(err) = incoming_msg_tx.send(msg).await {
+                            tracing::error!("Failed to forward deserialized device message: {err}");
+                            return Err(err.into());
+                        }
+                    }
+                    let (encoded_len, _) = incoming_serial_buffer
+                        .iter()
+                        .enumerate()
+                        .find(|(_idx, elem)| **elem == 0x00)
+                        .expect("Need a terminator to have a valid COBS payload");
+                    incoming_serial_buffer =
+                        Vec::from_iter(incoming_serial_buffer.into_iter().skip(encoded_len + 1));
+                }
+            }
+            Err(err) => {
+                tracing::error!("Failed to read data from the serial port: {err}");
+                return Err(err.into());
+            }
+        }
     }
-    Ok(())
 }
