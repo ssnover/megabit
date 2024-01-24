@@ -15,12 +15,24 @@ pub enum SerialMessage {
     SetRgbState(SetRgbState),
     SetRgbStateResponse(SetRgbStateResponse),
     ReportButtonPress,
+    UpdateRow(UpdateRow),
+    UpdateRowResponse(UpdateRowResponse),
 }
 
 impl SerialMessage {
     pub fn to_bytes(self) -> Vec<u8> {
         let mut out = vec![];
         match self {
+            SerialMessage::UpdateRow(inner) => {
+                out.push(0xa0);
+                out.push(0x00);
+                out.append(&mut inner.to_bytes())
+            }
+            SerialMessage::UpdateRowResponse(inner) => {
+                out.push(0xa0);
+                out.push(0x01);
+                out.append(&mut inner.to_bytes())
+            }
             SerialMessage::SetLedState(inner) => {
                 out.push(0xde);
                 out.push(0x00);
@@ -53,6 +65,9 @@ impl SerialMessage {
     pub fn try_from_bytes(data: &[u8]) -> io::Result<Self> {
         if data.len() >= 2 {
             match (data[0], data[1]) {
+                (0xa0, 0x01) => Ok(SerialMessage::UpdateRowResponse(
+                    UpdateRowResponse::try_from_bytes(&data[2..])?,
+                )),
                 (0xde, 0x01) => Ok(SerialMessage::SetLedStateResponse(
                     SetLedStateResponse::try_from_bytes(&data[2..])?,
                 )),
@@ -171,6 +186,58 @@ impl SetRgbStateResponse {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct UpdateRow {
+    row_number: u8,
+    row_data_len: u8,
+    row_data: Vec<u8>,
+}
+
+impl UpdateRow {
+    fn to_bytes(mut self) -> Vec<u8> {
+        let mut out = vec![self.row_number, self.row_data_len];
+        out.append(&mut self.row_data);
+        out
+    }
+}
+
+fn pack_bools_to_bytes(bits: &[bool]) -> Vec<u8> {
+    bits.into_iter()
+        .enumerate()
+        .fold(Vec::new(), |mut acc, (idx, elem)| {
+            let byte_idx = idx / 8;
+            let bit_idx = idx % 8;
+            if acc.len() <= byte_idx {
+                acc.push(0x00);
+            }
+            if *elem {
+                acc[byte_idx] |= 1 << bit_idx;
+            }
+            acc
+        })
+}
+
+#[derive(Debug, Clone)]
+pub struct UpdateRowResponse {
+    status: Status,
+}
+
+impl UpdateRowResponse {
+    fn to_bytes(self) -> Vec<u8> {
+        vec![self.status.into()]
+    }
+
+    fn try_from_bytes(data: &[u8]) -> io::Result<Self> {
+        if data.len() == 1 {
+            Ok(Self {
+                status: Status::try_from(data[0])?,
+            })
+        } else {
+            Err(io::ErrorKind::InvalidData.into())
+        }
+    }
+}
+
 #[derive(Debug)]
 enum SerialTaskRequest {
     SendMessage {
@@ -223,6 +290,16 @@ impl SerialConnection {
     pub async fn set_rgb_state(&self, (r, g, b): (u8, u8, u8)) -> io::Result<()> {
         self.send_message(SerialMessage::SetRgbState(SetRgbState { r, g, b }))
             .await
+    }
+
+    pub async fn update_row(&self, row_number: u8, row_data: Vec<bool>) -> io::Result<()> {
+        let data = pack_bools_to_bytes(&row_data[..]);
+        self.send_message(SerialMessage::UpdateRow(UpdateRow {
+            row_number,
+            row_data_len: row_data.len() as u8,
+            row_data: data,
+        }))
+        .await
     }
 }
 

@@ -1,6 +1,5 @@
 use clap::Parser;
 use std::{path::PathBuf, time::Duration};
-use tokio_serial::SerialPortBuilderExt;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod serial;
@@ -28,6 +27,20 @@ async fn main() -> anyhow::Result<()> {
     let serial_conn = serial::SerialConnection::new(args.device, tx);
 
     let colors = [(0xff, 0x00, 0x00), (0x00, 0xff, 0x00), (0x00, 0x00, 0xff)];
+
+    for row in 0..16 {
+        for col in 0..32u8 {
+            serial_conn
+                .update_row(row, {
+                    let mut data = vec![false; 32];
+                    data[usize::from(col)] = true;
+                    data
+                })
+                .await?;
+            tokio::time::sleep(Duration::from_millis(33)).await;
+        }
+        serial_conn.update_row(row, vec![false; 32]).await?;
+    }
 
     for i in 0..100 {
         serial_conn.set_led_state(true).await?;
