@@ -1,5 +1,5 @@
 use clap::Parser;
-use serial::SerialMessage;
+use megabit_serial_protocol::SerialMessage;
 use std::{path::PathBuf, time::Duration};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
