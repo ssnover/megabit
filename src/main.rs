@@ -1,4 +1,5 @@
 use clap::Parser;
+use serial::SerialMessage;
 use std::{path::PathBuf, time::Duration};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -22,11 +23,18 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let (tx, _rx) = async_channel::unbounded();
+    let (tx, rx) = async_channel::unbounded();
 
     let serial_conn = serial::SerialConnection::new(args.device, tx);
 
     let colors = [(0xff, 0x00, 0x00), (0x00, 0xff, 0x00), (0x00, 0x00, 0xff)];
+
+    loop {
+        let msg = rx.recv().await.unwrap();
+        if matches!(msg, SerialMessage::ReportButtonPress) {
+            break;
+        }
+    }
 
     for row in 0..16 {
         for col in 0..32u8 {

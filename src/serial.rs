@@ -3,6 +3,7 @@ use async_channel::{Receiver, Sender};
 use std::{
     io,
     path::{Path, PathBuf},
+    time::Duration,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::sync::oneshot;
@@ -17,6 +18,8 @@ pub enum SerialMessage {
     ReportButtonPress,
     UpdateRow(UpdateRow),
     UpdateRowResponse(UpdateRowResponse),
+    Ping,
+    PingResponse,
 }
 
 impl SerialMessage {
@@ -57,6 +60,14 @@ impl SerialMessage {
                 out.push(0xde);
                 out.push(0x04);
             }
+            SerialMessage::Ping => {
+                out.push(0xde);
+                out.push(0xfe);
+            }
+            SerialMessage::PingResponse => {
+                out.push(0xde);
+                out.push(0xff);
+            }
         }
 
         out
@@ -75,6 +86,7 @@ impl SerialMessage {
                     SetRgbStateResponse::try_from_bytes(&data[2..])?,
                 )),
                 (0xde, 0x04) => Ok(SerialMessage::ReportButtonPress),
+                (0xde, 0xff) => Ok(SerialMessage::PingResponse),
                 _ => {
                     tracing::error!(
                         "Unexpected serial message kind 0x{:02x}{:02x}",
@@ -248,7 +260,8 @@ enum SerialTaskRequest {
 
 pub struct SerialConnection {
     actor_tx: Sender<SerialTaskRequest>,
-    _task_handle: ChildTask<()>,
+    _serial_task: ChildTask<()>,
+    _ping_task: ChildTask<()>,
 }
 
 impl SerialConnection {
@@ -260,16 +273,36 @@ impl SerialConnection {
         let device_path = device_path.as_ref().to_path_buf();
 
         let handle = tokio::spawn(serial_task(device_path, rx, incoming_msg_tx));
+        let ping_task = {
+            let tx = tx.clone();
+            tokio::spawn(async move {
+                loop {
+                    tokio::time::sleep(Duration::from_millis(333)).await;
+                    if let Err(err) = Self::send_message_inner(&tx, SerialMessage::Ping).await {
+                        tracing::error!("Failed to send ping to device: {err}");
+                        break;
+                    }
+                }
+            })
+        };
 
         SerialConnection {
             actor_tx: tx,
-            _task_handle: handle.into(),
+            _serial_task: handle.into(),
+            _ping_task: ping_task.into(),
         }
     }
 
     async fn send_message(&self, msg: SerialMessage) -> io::Result<()> {
+        Self::send_message_inner(&self.actor_tx, msg).await
+    }
+
+    async fn send_message_inner(
+        actor_tx: &Sender<SerialTaskRequest>,
+        msg: SerialMessage,
+    ) -> io::Result<()> {
         let (tx, rx) = oneshot::channel();
-        self.actor_tx
+        actor_tx
             .send(SerialTaskRequest::SendMessage { msg, response: tx })
             .await
             .map_err(|err| {
@@ -367,9 +400,9 @@ async fn handle_serial_msgs(
     loop {
         match serial_rx.read_buf(&mut incoming_serial_buffer).await {
             Ok(n) => {
-                tracing::debug!("Received {n} bytes from the serial port");
+                tracing::trace!("Received {n} bytes from the serial port");
                 if let Ok(decoded_data) = cobs::decode_vec(&incoming_serial_buffer[..]) {
-                    tracing::debug!(
+                    tracing::trace!(
                         "Decoded a payload of {} bytes from buffer of {} bytes",
                         decoded_data.len(),
                         incoming_serial_buffer.len()
