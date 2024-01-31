@@ -1,0 +1,69 @@
+use std::{cell::RefCell, collections::BTreeMap, path::Path, rc::Rc};
+
+use crate::serial::SyncSerialConnection;
+
+mod host_functions;
+
+const SCREEN_WIDTH: usize = 32;
+const SCREEN_HEIGHT: usize = 16;
+
+pub type ScreenBuffer = [[bool; SCREEN_WIDTH]; SCREEN_HEIGHT];
+
+struct PersistentData {
+    screen_buffer: Rc<RefCell<ScreenBuffer>>,
+    kv_store: Rc<RefCell<BTreeMap<String, serde_json::Value>>>,
+    serial_conn: SyncSerialConnection,
+}
+
+pub struct WasmAppRunner {
+    app: extism::Plugin,
+}
+
+impl WasmAppRunner {
+    pub fn new(
+        app_path: impl AsRef<Path>,
+        serial_conn: SyncSerialConnection,
+    ) -> anyhow::Result<Self> {
+        let wasm_app_bin = extism::Wasm::file(app_path);
+        let screen_buffer = Rc::new(RefCell::new([[false; SCREEN_WIDTH]; SCREEN_HEIGHT]));
+        let kv_store = Rc::new(RefCell::new(BTreeMap::new()));
+
+        let data = PersistentData {
+            screen_buffer,
+            kv_store,
+            serial_conn,
+        };
+        let user_data = extism::UserData::new(data);
+
+        let manifest = extism::Manifest::new([wasm_app_bin]);
+        let plugin = extism::PluginBuilder::new(manifest)
+            .with_wasi(false)
+            .with_function(
+                "write_region",
+                [
+                    extism::PTR,
+                    extism::PTR,
+                    extism::PTR,
+                    extism::PTR,
+                    extism::PTR,
+                ],
+                [extism::PTR],
+                user_data.clone(),
+                host_functions::write_region,
+            )
+            .with_function(
+                "render",
+                [extism::PTR],
+                [extism::PTR],
+                user_data.clone(),
+                host_functions::render,
+            )
+            .build()?;
+
+        Ok(WasmAppRunner { app: plugin })
+    }
+
+    pub fn setup_app(&mut self) -> anyhow::Result<()> {
+        self.app.call::<_, ()>("setup", ())
+    }
+}

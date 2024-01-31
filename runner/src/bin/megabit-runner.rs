@@ -2,12 +2,14 @@ use clap::Parser;
 use std::{path::PathBuf, time::Duration};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use megabit_runner::serial;
+use megabit_runner::{serial, wasm_env};
 
 #[derive(Clone, Debug, Parser)]
 pub struct Args {
     #[arg(short, long)]
     device: PathBuf,
+    #[arg(short, long)]
+    app: PathBuf,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -31,12 +33,8 @@ fn main() -> anyhow::Result<()> {
 
     let serial_task_handle = rt.spawn(Box::into_pin(serial_task));
 
-    for _ in 0..100 {
-        serial_conn.set_led_state(true)?;
-        std::thread::sleep(Duration::from_secs(1));
-        serial_conn.set_led_state(false)?;
-        std::thread::sleep(Duration::from_secs(1));
-    }
+    let mut wasm_app = wasm_env::WasmAppRunner::new(args.app, serial_conn)?;
+    wasm_app.setup_app()?;
 
     Ok(())
 }
