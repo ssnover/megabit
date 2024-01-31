@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-abort-on-drop = "0.2"
 anyhow = "1"
 async-channel = "2.1"
 clap = { version = "4.4", features = ["derive"] }

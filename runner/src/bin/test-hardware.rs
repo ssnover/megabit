@@ -3,7 +3,7 @@ use megabit_serial_protocol::SerialMessage;
 use std::{path::PathBuf, time::Duration};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-mod serial;
+use megabit_runner::serial;
 
 #[derive(Clone, Debug, Parser)]
 pub struct Args {
@@ -25,7 +25,8 @@ async fn main() -> anyhow::Result<()> {
 
     let (tx, rx) = async_channel::unbounded();
 
-    let serial_conn = serial::SerialConnection::new(args.device, tx);
+    let (serial_conn, serial_task) = serial::start_serial_task(args.device, tx);
+    let serial_task_handle = tokio::spawn(Box::into_pin(serial_task));
 
     let colors = [(0xff, 0x00, 0x00), (0x00, 0xff, 0x00), (0x00, 0x00, 0xff)];
 

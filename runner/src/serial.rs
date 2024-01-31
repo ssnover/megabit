@@ -1,7 +1,7 @@
-use abort_on_drop::ChildTask;
 use async_channel::{Receiver, Sender};
 use megabit_serial_protocol::*;
 use std::{
+    future::Future,
     io,
     path::{Path, PathBuf},
     time::Duration,
@@ -18,41 +18,42 @@ enum SerialTaskRequest {
     },
 }
 
+pub fn start_serial_task(
+    device_path: impl AsRef<Path>,
+    msg_tx: Sender<SerialMessage>,
+) -> (SerialConnection, Box<dyn Future<Output = ()> + Send + Sync>) {
+    let (tx, rx) = async_channel::unbounded();
+    let device_path = device_path.as_ref().to_path_buf();
+
+    let serial_future = serial_task(device_path, rx, msg_tx);
+    let ping_task = {
+        let tx = tx.clone();
+        async move {
+            loop {
+                tokio::time::sleep(Duration::from_millis(333)).await;
+                if let Err(err) =
+                    SerialConnection::send_message_inner(&tx, SerialMessage::Ping).await
+                {
+                    tracing::error!("Failed to send ping to device: {err}");
+                    break;
+                }
+            }
+        }
+    };
+
+    let serial_task = async move {
+        tokio::join!(serial_future, ping_task);
+    };
+
+    (SerialConnection { actor_tx: tx }, Box::new(serial_task))
+}
+
+#[derive(Clone, Debug)]
 pub struct SerialConnection {
     actor_tx: Sender<SerialTaskRequest>,
-    _serial_task: ChildTask<()>,
-    _ping_task: ChildTask<()>,
 }
 
 impl SerialConnection {
-    pub fn new(
-        device_path: impl AsRef<Path>,
-        incoming_msg_tx: Sender<SerialMessage>,
-    ) -> SerialConnection {
-        let (tx, rx) = async_channel::unbounded();
-        let device_path = device_path.as_ref().to_path_buf();
-
-        let handle = tokio::spawn(serial_task(device_path, rx, incoming_msg_tx));
-        let ping_task = {
-            let tx = tx.clone();
-            tokio::spawn(async move {
-                loop {
-                    tokio::time::sleep(Duration::from_millis(333)).await;
-                    if let Err(err) = Self::send_message_inner(&tx, SerialMessage::Ping).await {
-                        tracing::error!("Failed to send ping to device: {err}");
-                        break;
-                    }
-                }
-            })
-        };
-
-        SerialConnection {
-            actor_tx: tx,
-            _serial_task: handle.into(),
-            _ping_task: ping_task.into(),
-        }
-    }
-
     async fn send_message(&self, msg: SerialMessage) -> io::Result<()> {
         Self::send_message_inner(&self.actor_tx, msg).await
     }
@@ -93,6 +94,33 @@ impl SerialConnection {
             row_data: data,
         }))
         .await
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SyncSerialConnection {
+    inner: SerialConnection,
+    rt: tokio::runtime::Handle,
+}
+
+impl SyncSerialConnection {
+    pub fn new(conn: SerialConnection, rt: tokio::runtime::Handle) -> Self {
+        Self { inner: conn, rt }
+    }
+
+    pub fn set_led_state(&self, new_state: bool) -> io::Result<()> {
+        self.rt
+            .block_on(async { self.inner.set_led_state(new_state).await })
+    }
+
+    pub fn set_rgb_state(&self, (r, g, b): (u8, u8, u8)) -> io::Result<()> {
+        self.rt
+            .block_on(async { self.inner.set_rgb_state((r, g, b)).await })
+    }
+
+    pub fn update_row(&self, row_number: u8, row_data: Vec<bool>) -> io::Result<()> {
+        self.rt
+            .block_on(async { self.inner.update_row(row_number, row_data).await })
     }
 }
 
