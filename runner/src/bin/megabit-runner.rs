@@ -1,5 +1,5 @@
 use clap::Parser;
-use std::{path::PathBuf, time::Duration};
+use std::path::PathBuf;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use megabit_runner::{serial, wasm_env};
@@ -31,7 +31,7 @@ fn main() -> anyhow::Result<()> {
     let (serial_conn, serial_task) = serial::start_serial_task(args.device, tx);
     let serial_conn = serial::SyncSerialConnection::new(serial_conn, rt.handle().clone());
 
-    let serial_task_handle = rt.spawn(Box::into_pin(serial_task));
+    let _serial_task_handle = rt.spawn(Box::into_pin(serial_task));
 
     let mut wasm_app = wasm_env::WasmAppRunner::new(args.app, serial_conn)?;
     wasm_app.setup_app()?;

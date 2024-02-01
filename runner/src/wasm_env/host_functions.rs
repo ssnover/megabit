@@ -15,8 +15,22 @@ extism::host_fn!(pub render(user_data: PersistentData; rows_to_update: Vec<u8>) 
     host::render(&screen_buffer, serial_conn, rows_to_update)
 });
 
+extism::host_fn!(pub kv_store_read(user_data: PersistentData; key: String) -> Vec<u8> {
+    let data = user_data.get()?;
+    let data = data.lock().unwrap();
+    let kv_store = data.kv_store.borrow();
+    host::kv_store_read(&kv_store, key)
+});
+
+extism::host_fn!(pub kv_store_write(user_data: PersistentData; key: String, value: Vec<u8>) {
+    let data = user_data.get()?;
+    let data = data.lock().unwrap();
+    let mut kv_store = data.kv_store.borrow_mut();
+    host::kv_store_write(&mut kv_store, key, value)
+});
+
 mod host {
-    use crate::serial::SyncSerialConnection;
+    use crate::{serial::SyncSerialConnection, wasm_env::KvStore};
 
     use super::super::{ScreenBuffer, SCREEN_HEIGHT, SCREEN_WIDTH};
 
@@ -58,5 +72,18 @@ mod host {
         }
 
         Ok(())
+    }
+
+    pub fn kv_store_write(
+        kv_store: &mut KvStore,
+        key: String,
+        data: Vec<u8>,
+    ) -> Result<(), extism::Error> {
+        kv_store.insert(key, data);
+        Ok(())
+    }
+
+    pub fn kv_store_read(kv_store: &KvStore, key: String) -> Result<Vec<u8>, extism::Error> {
+        Ok(kv_store.get(&key).unwrap_or(&vec![]).clone())
     }
 }

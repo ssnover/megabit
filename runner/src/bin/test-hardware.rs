@@ -26,7 +26,7 @@ async fn main() -> anyhow::Result<()> {
     let (tx, rx) = async_channel::unbounded();
 
     let (serial_conn, serial_task) = serial::start_serial_task(args.device, tx);
-    let serial_task_handle = tokio::spawn(Box::into_pin(serial_task));
+    let _serial_task_handle = tokio::spawn(Box::into_pin(serial_task));
 
     let colors = [(0xff, 0x00, 0x00), (0x00, 0xff, 0x00), (0x00, 0x00, 0xff)];
 

@@ -8,10 +8,11 @@ const SCREEN_WIDTH: usize = 32;
 const SCREEN_HEIGHT: usize = 16;
 
 pub type ScreenBuffer = [[bool; SCREEN_WIDTH]; SCREEN_HEIGHT];
+pub type KvStore = BTreeMap<String, Vec<u8>>;
 
 struct PersistentData {
     screen_buffer: Rc<RefCell<ScreenBuffer>>,
-    kv_store: Rc<RefCell<BTreeMap<String, serde_json::Value>>>,
+    kv_store: Rc<RefCell<KvStore>>,
     serial_conn: SyncSerialConnection,
 }
 
@@ -57,6 +58,20 @@ impl WasmAppRunner {
                 [extism::PTR],
                 user_data.clone(),
                 host_functions::render,
+            )
+            .with_function(
+                "kv_store_read",
+                [extism::PTR],
+                [extism::PTR],
+                user_data.clone(),
+                host_functions::kv_store_read,
+            )
+            .with_function(
+                "kv_store_write",
+                [extism::PTR, extism::PTR],
+                [extism::PTR],
+                user_data.clone(),
+                host_functions::kv_store_write,
             )
             .build()?;
 
