@@ -1,5 +1,5 @@
 use clap::Parser;
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use megabit_runner::{serial, wasm_env};
@@ -35,6 +35,11 @@ fn main() -> anyhow::Result<()> {
 
     let mut wasm_app = wasm_env::WasmAppRunner::new(args.app, serial_conn)?;
     wasm_app.setup_app()?;
+
+    for _ in 0..200 {
+        wasm_app.run_app_once()?;
+        std::thread::sleep(Duration::from_millis(500));
+    }
 
     Ok(())
 }

@@ -38,7 +38,7 @@ impl WasmAppRunner {
 
         let manifest = extism::Manifest::new([wasm_app_bin]);
         let plugin = extism::PluginBuilder::new(manifest)
-            .with_wasi(false)
+            .with_wasi(true)
             .with_function(
                 "write_region",
                 [
@@ -80,5 +80,9 @@ impl WasmAppRunner {
 
     pub fn setup_app(&mut self) -> anyhow::Result<()> {
         self.app.call::<_, ()>("setup", ())
+    }
+
+    pub fn run_app_once(&mut self) -> anyhow::Result<()> {
+        self.app.call::<_, ()>("run", ())
     }
 }
