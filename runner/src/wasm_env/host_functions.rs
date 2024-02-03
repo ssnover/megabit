@@ -29,6 +29,10 @@ extism::host_fn!(pub kv_store_write(user_data: PersistentData; key: String, valu
     host::kv_store_write(&mut kv_store, key, value)
 });
 
+extism::host_fn!(pub log(level: u32, line: String) {
+    host::log(level, line)
+});
+
 mod host {
     use crate::{serial::SyncSerialConnection, wasm_env::KvStore};
 
@@ -85,5 +89,20 @@ mod host {
 
     pub fn kv_store_read(kv_store: &KvStore, key: String) -> Result<Vec<u8>, extism::Error> {
         Ok(kv_store.get(&key).unwrap_or(&vec![]).clone())
+    }
+
+    pub fn log(level: u32, line: String) -> Result<(), extism::Error> {
+        match level {
+            0 => tracing::trace!("{line}"),
+            1 => tracing::debug!("{line}"),
+            2 => tracing::info!("{line}"),
+            3 => tracing::warn!("{line}"),
+            4 => tracing::error!("{line}"),
+            level => {
+                tracing::error!("Got a log call from app with invalid log level: {level}");
+            }
+        }
+
+        Ok(())
     }
 }

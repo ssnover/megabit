@@ -36,7 +36,7 @@ fn main() -> anyhow::Result<()> {
     let mut wasm_app = wasm_env::WasmAppRunner::new(args.app, serial_conn)?;
     wasm_app.setup_app()?;
 
-    for _ in 0..200 {
+    loop {
         wasm_app.run_app_once()?;
         std::thread::sleep(Duration::from_millis(500));
     }

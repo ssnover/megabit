@@ -73,6 +73,13 @@ impl WasmAppRunner {
                 user_data.clone(),
                 host_functions::kv_store_write,
             )
+            .with_function(
+                "log",
+                [extism::PTR, extism::PTR],
+                [extism::PTR],
+                extism::UserData::new(()),
+                host_functions::log,
+            )
             .build()?;
 
         Ok(WasmAppRunner { app: plugin })
