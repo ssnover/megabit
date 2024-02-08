@@ -1,4 +1,4 @@
-use crate::messages::{SetDebugLed, SetMatrixRow, SetRgbLed, SimMessage};
+use crate::messages::{SetDebugLed, SetMatrixRow, SetMatrixRowRgb, SetRgbLed, SimMessage};
 use futures::{SinkExt, StreamExt};
 use gloo::{
     net::websocket::{futures::WebSocket, Message},
@@ -39,7 +39,9 @@ pub fn WebsocketProvider(props: &WebsocketProviderProps) -> Html {
     use_effect_with((), {
         let led_state_setter = props.set_led_state.clone();
         let rgb_state_setter = props.set_rgb_state.clone();
+        let is_rgb_display_setter = props.is_rgb_display_setter.clone();
         let update_cb = props.update_row_cb.clone();
+        let update_rgb_cb = props.update_row_rgb_cb.clone();
         let connection = connection.clone();
         move |()| {
             spawn_local(async move {
@@ -65,7 +67,9 @@ pub fn WebsocketProvider(props: &WebsocketProviderProps) -> Html {
                                     msg,
                                     &led_state_setter,
                                     &rgb_state_setter,
+                                    &is_rgb_display_setter,
                                     &update_cb,
+                                    &update_rgb_cb,
                                 );
                             }
                             _ => log::info!("Got bytes"),
@@ -106,7 +110,9 @@ pub fn WebsocketProvider(props: &WebsocketProviderProps) -> Html {
 pub struct WebsocketProviderProps {
     pub set_led_state: UseStateSetter<bool>,
     pub set_rgb_state: UseStateSetter<(u8, u8, u8)>,
+    pub is_rgb_display_setter: UseStateSetter<bool>,
     pub update_row_cb: Callback<(u8, Vec<bool>)>,
+    pub update_row_rgb_cb: Callback<(u8, Vec<u16>)>,
     pub children: Children,
 }
 
@@ -119,7 +125,9 @@ fn handle_simulator_message(
     msg: String,
     led_state_setter: &UseStateSetter<bool>,
     rgb_state_setter: &UseStateSetter<(u8, u8, u8)>,
+    is_rgb_display_setter: &UseStateSetter<bool>,
     update_cb: &Callback<(u8, Vec<bool>)>,
+    update_row_rgb_cb: &Callback<(u8, Vec<u16>)>,
 ) {
     if let Ok(msg) = serde_json::from_str::<SimMessage>(&msg) {
         match msg {
@@ -127,6 +135,10 @@ fn handle_simulator_message(
             SimMessage::SetRgbLed(SetRgbLed { r, g, b }) => rgb_state_setter.set((r, g, b)),
             SimMessage::SetMatrixRow(SetMatrixRow { row, data }) => {
                 update_cb.emit((row as u8, data));
+            }
+            SimMessage::RequestRgb => is_rgb_display_setter.set(true),
+            SimMessage::SetMatrixRowRgb(SetMatrixRowRgb { row, data }) => {
+                update_row_rgb_cb.emit((row as u8, data));
             }
             _ => log::warn!("Unhandled sim message: {msg:?}"),
         }

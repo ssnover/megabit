@@ -8,6 +8,8 @@ pub enum SimMessage {
     SetRgbLed(SetRgbLed),
     ReportButtonPress,
     SetMatrixRow(SetMatrixRow),
+    SetMatrixRowRgb(SetMatrixRowRgb),
+    RequestRgb,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -26,4 +28,10 @@ pub struct SetRgbLed {
 pub struct SetMatrixRow {
     pub row: usize,
     pub data: Vec<bool>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SetMatrixRowRgb {
+    pub row: usize,
+    pub data: Vec<u16>,
 }
