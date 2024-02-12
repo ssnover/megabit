@@ -1,6 +1,6 @@
 use gloo::{events::EventListener, utils::window};
 use std::ops::Deref;
-use web_sys::HtmlCanvasElement;
+use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 use yew::prelude::*;
 
 #[function_component(Canvas)]
@@ -55,6 +55,8 @@ pub fn canvas(props: &CanvasProperties) -> Html {
 pub struct CanvasProperties {
     pub renderer: Callback<HtmlCanvasElement>,
     pub counter: UseStateHandle<u64>,
+    pub matrix_buffer: UseStateHandle<core::cell::RefCell<simple_display::MatrixBuffer>>,
+    pub rgb_matrix_buffer: UseStateHandle<core::cell::RefCell<rgb_display::MatrixBuffer>>,
 }
 
 pub mod simple_display {
@@ -65,23 +67,18 @@ pub mod simple_display {
     pub const PIXELS_PER_CELL: u32 = 16;
     pub const COLUMNS: u32 = 32;
     pub const ROWS: u32 = 16;
-    pub type MatrixBuffer = [u8; (COLUMNS * ROWS) as usize];
+    pub type MatrixBuffer = Vec<u8>;
 
     pub fn draw(canvas: HtmlCanvasElement, matrix_buffer: &RefCell<MatrixBuffer>) {
-        let interface: CanvasRenderingContext2d = canvas
-            .get_context("2d")
-            .unwrap()
-            .unwrap()
-            .dyn_into()
-            .unwrap();
+        let interface = get_2d_canvas(&canvas);
         interface.clear_rect(0.0, 0.0, canvas.width() as f64, canvas.height() as f64);
 
         let on_color: JsValue = JsValue::from("#ff0000");
         let off_color: JsValue = JsValue::from("#000000");
 
-        for row in (0..(canvas.height() / PIXELS_PER_CELL)).into_iter() {
-            for col in (0..(canvas.width() / PIXELS_PER_CELL)).into_iter() {
-                let matrix_buffer = matrix_buffer.borrow();
+        let matrix_buffer = matrix_buffer.borrow();
+        for row in (0..ROWS).into_iter() {
+            for col in (0..COLUMNS).into_iter() {
                 if matrix_buffer[(row * COLUMNS + col) as usize] != 0x00 {
                     interface.set_fill_style(&on_color);
                 } else {
@@ -98,9 +95,9 @@ pub mod simple_display {
     }
 
     pub fn update_row(row_number: u8, data: Vec<bool>, matrix_buffer: &RefCell<MatrixBuffer>) {
-        let mut buffer = matrix_buffer.borrow_mut();
+        let mut matrix_buffer = matrix_buffer.borrow_mut();
         let start_offset = row_number as usize * COLUMNS as usize;
-        buffer[start_offset..(start_offset + data.len())]
+        matrix_buffer[start_offset..(start_offset + data.len())]
             .iter_mut()
             .zip(data)
             .for_each(|(elem, new_state)| {
@@ -121,20 +118,14 @@ pub mod rgb_display {
     const PIXELS_PER_CELL: u32 = 8;
     pub const COLUMNS: u32 = 64;
     pub const ROWS: u32 = 32;
-    pub type MatrixBuffer = [u16; (COLUMNS * ROWS) as usize];
+    pub type MatrixBuffer = Vec<u16>;
 
     pub fn draw(canvas: HtmlCanvasElement, matrix_buffer: &RefCell<MatrixBuffer>) {
-        let interface: CanvasRenderingContext2d = canvas
-            .get_context("2d")
-            .unwrap()
-            .unwrap()
-            .dyn_into()
-            .unwrap();
-        //interface.clear_rect(0.0, 0.0, canvas.width() as f64, canvas.height() as f64);
+        let interface = get_2d_canvas(&canvas);
 
-        for row in (0..(canvas.height() / PIXELS_PER_CELL)).into_iter() {
-            for col in (0..(canvas.width() / PIXELS_PER_CELL)).into_iter() {
-                let matrix_buffer = matrix_buffer.borrow();
+        let matrix_buffer = matrix_buffer.borrow();
+        for row in (0..ROWS).into_iter() {
+            for col in (0..COLUMNS).into_iter() {
                 let rgb555_color = matrix_buffer[(row * COLUMNS + col) as usize];
                 let (r, g, b) = {
                     let r = ((rgb555_color & 0b11111_00000_00000) >> 10) as u8;
@@ -142,7 +133,8 @@ pub mod rgb_display {
                     let b = (rgb555_color & 0b00000_00000_11111) as u8;
                     (r << 3, g << 3, b << 3)
                 };
-                let color = JsValue::from(format!("{r:02x}{g:02x}{b:02x}"));
+                let color = JsValue::from(format!("#{r:02x}{g:02x}{b:02x}"));
+
                 interface.set_fill_style(&color);
                 interface.fill_rect(
                     (col * PIXELS_PER_CELL) as f64,
@@ -155,13 +147,22 @@ pub mod rgb_display {
     }
 
     pub fn update_row(row_number: u8, data: Vec<u16>, matrix_buffer: &RefCell<MatrixBuffer>) {
-        let mut buffer = matrix_buffer.borrow_mut();
         let start_offset = row_number as usize * COLUMNS as usize;
-        buffer[start_offset..(start_offset + data.len())]
+        let mut matrix_buffer = matrix_buffer.borrow_mut();
+        matrix_buffer[start_offset..(start_offset + data.len())]
             .iter_mut()
             .zip(data)
             .for_each(|(elem, new_color)| {
                 *elem = new_color;
             });
     }
+}
+
+fn get_2d_canvas(canvas: &HtmlCanvasElement) -> CanvasRenderingContext2d {
+    canvas
+        .get_context("2d")
+        .unwrap()
+        .unwrap()
+        .dyn_into()
+        .unwrap()
 }

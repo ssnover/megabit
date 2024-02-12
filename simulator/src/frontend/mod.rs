@@ -27,12 +27,18 @@ pub fn app() -> Html {
     let is_rgb_display_setter = is_rgb_display.setter();
 
     let matrix_buffer = use_state(|| {
-        RefCell::new(
-            [0u8; (matrix::simple_display::COLUMNS * matrix::simple_display::ROWS) as usize],
-        )
+        RefCell::new(vec![
+            0u8;
+            (matrix::simple_display::COLUMNS * matrix::simple_display::ROWS)
+                as usize
+        ])
     });
     let rgb_matrix_buffer = use_state(|| {
-        RefCell::new([0u16; (matrix::rgb_display::COLUMNS * matrix::rgb_display::ROWS) as usize])
+        RefCell::new(vec![
+            0u16;
+            (matrix::rgb_display::COLUMNS * matrix::rgb_display::ROWS)
+                as usize
+        ])
     });
 
     let renderer_cb = {
@@ -41,11 +47,13 @@ pub fn app() -> Html {
 
         if *is_rgb_display {
             Callback::from(move |canvas| {
-                matrix::rgb_display::draw(canvas, &rgb_matrix_buffer);
+                log::info!("Draw rgb display");
+                matrix::rgb_display::draw(canvas, &*rgb_matrix_buffer);
             })
         } else {
             Callback::from(move |canvas| {
-                matrix::simple_display::draw(canvas, &matrix_buffer);
+                log::info!("Draw simple display");
+                matrix::simple_display::draw(canvas, &*matrix_buffer);
             })
         }
     };
@@ -63,6 +71,7 @@ pub fn app() -> Html {
         let matrix_buffer = rgb_matrix_buffer.clone();
         let update_counter = update_counter.clone();
         Callback::from(move |(row_number, data)| {
+            log::info!("Updating rgb callback");
             update_counter_setter.set((*update_counter).overflowing_add(1).0);
             matrix::rgb_display::update_row(row_number, data, &matrix_buffer);
         })
@@ -74,7 +83,7 @@ pub fn app() -> Html {
             <UserButton/>
             <DebugLed {led_state} />
             <RgbLed {rgb_state} />
-            <Canvas renderer={renderer_cb} counter={update_counter}/>
+            <Canvas renderer={renderer_cb} counter={update_counter} {matrix_buffer} {rgb_matrix_buffer} />
         </WebsocketProvider>
     }
 }

@@ -9,6 +9,8 @@ pub enum SerialMessage {
     ReportButtonPress,
     UpdateRow(UpdateRow),
     UpdateRowResponse(UpdateRowResponse),
+    UpdateRowRgb(UpdateRowRgb),
+    UpdateRowRgbResponse(UpdateRowRgbResponse),
     Ping,
     PingResponse,
 }
@@ -25,6 +27,16 @@ impl SerialMessage {
             SerialMessage::UpdateRowResponse(inner) => {
                 out.push(0xa0);
                 out.push(0x01);
+                out.append(&mut inner.to_bytes())
+            }
+            SerialMessage::UpdateRowRgb(inner) => {
+                out.push(0xa0);
+                out.push(0x02);
+                out.append(&mut inner.to_bytes())
+            }
+            SerialMessage::UpdateRowRgbResponse(inner) => {
+                out.push(0xa0);
+                out.push(0x03);
                 out.append(&mut inner.to_bytes())
             }
             SerialMessage::SetLedState(inner) => {
@@ -72,6 +84,12 @@ impl SerialMessage {
                 )?)),
                 (0xa0, 0x01) => Ok(SerialMessage::UpdateRowResponse(
                     UpdateRowResponse::try_from_bytes(&data[2..])?,
+                )),
+                (0xa0, 0x02) => Ok(SerialMessage::UpdateRowRgb(UpdateRowRgb::try_from_bytes(
+                    &data[2..],
+                )?)),
+                (0xa0, 0x03) => Ok(SerialMessage::UpdateRowRgbResponse(
+                    UpdateRowRgbResponse::try_from_bytes(&data[2..])?,
                 )),
                 (0xde, 0x00) => Ok(SerialMessage::SetLedState(SetLedState::try_from_bytes(
                     &data[2..],
@@ -155,7 +173,7 @@ impl SetLedState {
 
 #[derive(Clone, Debug)]
 pub struct SetLedStateResponse {
-    status: Status,
+    pub status: Status,
 }
 
 impl SetLedStateResponse {
@@ -201,7 +219,7 @@ impl SetRgbState {
 
 #[derive(Clone, Debug)]
 pub struct SetRgbStateResponse {
-    status: Status,
+    pub status: Status,
 }
 
 impl SetRgbStateResponse {
@@ -268,10 +286,73 @@ pub fn pack_bools_to_bytes(bits: &[bool]) -> Vec<u8> {
 
 #[derive(Debug, Clone)]
 pub struct UpdateRowResponse {
-    status: Status,
+    pub status: Status,
 }
 
 impl UpdateRowResponse {
+    pub fn to_bytes(self) -> Vec<u8> {
+        vec![self.status.into()]
+    }
+
+    pub fn try_from_bytes(data: &[u8]) -> io::Result<Self> {
+        if data.len() == 1 {
+            Ok(Self {
+                status: Status::try_from(data[0])?,
+            })
+        } else {
+            Err(io::ErrorKind::InvalidData.into())
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct UpdateRowRgb {
+    pub row_number: u8,
+    pub row_data_len: u8,
+    pub row_data: Vec<u16>,
+}
+
+impl UpdateRowRgb {
+    pub fn to_bytes(self) -> Vec<u8> {
+        let mut out = vec![self.row_number, self.row_data_len];
+        let mut row_data = self
+            .row_data
+            .into_iter()
+            .map(|elem| elem.to_be_bytes())
+            .flatten()
+            .collect();
+        out.append(&mut row_data);
+        out
+    }
+
+    pub fn try_from_bytes(data: &[u8]) -> io::Result<Self> {
+        if data.len() >= 3 {
+            let row_number = data[0];
+            let row_data_len = data[1];
+            let row_data = Vec::from(&data[2..]);
+            let row_data = data[2..]
+                .iter()
+                .enumerate()
+                .step_by(2)
+                .map(|(idx, _elem)| u16::from_be_bytes([row_data[idx], row_data[idx + 1]]))
+                .collect();
+            Ok(Self {
+                row_number,
+                row_data_len,
+                row_data,
+            })
+        } else {
+            Err(io::ErrorKind::InvalidData.into())
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct UpdateRowRgbResponse {
+    pub status: Status,
+}
+
+impl UpdateRowRgbResponse {
     pub fn to_bytes(self) -> Vec<u8> {
         vec![self.status.into()]
     }
