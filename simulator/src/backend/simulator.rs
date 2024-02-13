@@ -1,18 +1,21 @@
+use super::DisplayConfiguration;
 use crate::messages::{SetDebugLed, SetMatrixRow, SetMatrixRowRgb, SetRgbLed, SimMessage};
 use async_channel::{Receiver, Sender};
 use megabit_serial_protocol::*;
+use std::convert::AsRef;
 
 pub async fn run(
     from_ws: Receiver<String>,
     from_serial: Receiver<Vec<u8>>,
     to_ws: Sender<String>,
     to_serial: Sender<Vec<u8>>,
+    display_cfg: DisplayConfiguration,
 ) {
     tokio::select! {
-        _ = handle_serial_packets(from_serial, to_ws.clone(), to_serial.clone()) => {
+        _ = handle_serial_packets(from_serial, to_ws.clone(), to_serial.clone(), display_cfg) => {
             tracing::info!("Serial handler exited");
         },
-        _ = handle_ws_message(from_ws, to_serial, to_ws) => {
+        _ = handle_ws_message(from_ws, to_serial, to_ws, &display_cfg) => {
             tracing::info!("Websocket message handler exited");
         }
     }
@@ -22,10 +25,21 @@ async fn handle_serial_packets(
     from_serial: Receiver<Vec<u8>>,
     to_ws: Sender<String>,
     to_serial: Sender<Vec<u8>>,
+    display_cfg: DisplayConfiguration,
 ) {
+    let mut monocolor_display_color = 0b11111_00000_00000u16;
+
     while let Ok(msg) = from_serial.recv().await {
         if let Ok(msg) = SerialMessage::try_from_bytes(&msg[..]) {
-            if let Err(err) = handle_serial_message(&to_serial, &to_ws, msg).await {
+            if let Err(err) = handle_serial_message(
+                &to_serial,
+                &to_ws,
+                &display_cfg,
+                &mut monocolor_display_color,
+                msg,
+            )
+            .await
+            {
                 tracing::error!("Error on handling serial message: {err}");
             }
         }
@@ -35,8 +49,11 @@ async fn handle_serial_packets(
 async fn handle_serial_message(
     to_serial: &Sender<Vec<u8>>,
     to_ws: &Sender<String>,
+    display_cfg: &DisplayConfiguration,
+    display_color: &mut u16,
     msg: SerialMessage,
 ) -> anyhow::Result<()> {
+    tracing::debug!("Handling serial message: {}", msg.as_ref());
     match msg {
         SerialMessage::Ping => {
             to_serial
@@ -60,15 +77,33 @@ async fn handle_serial_message(
                     })
                     .flatten()
                     .collect::<Vec<bool>>();
-                let status = if let Ok(msg) =
-                    serde_json::to_string(&SimMessage::SetMatrixRow(SetMatrixRow {
-                        row: usize::from(row_number),
-                        data: pixel_states,
-                    })) {
-                    let _ = to_ws.send(msg).await;
-                    Status::Success
+                let status = if display_cfg.is_rgb {
+                    if let Ok(msg) =
+                        serde_json::to_string(&SimMessage::SetMatrixRowRgb(SetMatrixRowRgb {
+                            row: usize::from(row_number),
+                            data: pixel_states
+                                .into_iter()
+                                .map(|state| if state { *display_color } else { 0 })
+                                .collect(),
+                        }))
+                    {
+                        let _ = to_ws.send(msg).await;
+                        Status::Success
+                    } else {
+                        Status::Failure
+                    }
                 } else {
-                    Status::Failure
+                    if let Ok(msg) =
+                        serde_json::to_string(&SimMessage::SetMatrixRow(SetMatrixRow {
+                            row: usize::from(row_number),
+                            data: pixel_states,
+                        }))
+                    {
+                        let _ = to_ws.send(msg).await;
+                        Status::Success
+                    } else {
+                        Status::Failure
+                    }
                 };
                 to_serial
                     .send(SerialMessage::UpdateRowResponse(UpdateRowResponse { status }).to_bytes())
@@ -87,11 +122,9 @@ async fn handle_serial_message(
         }
         SerialMessage::UpdateRowRgb(UpdateRowRgb {
             row_number,
-            row_data_len,
+            row_data_len: _,
             row_data,
         }) => {
-            tracing::info!("Updating rgb row");
-            tracing::info!("Row data 0: {:04x}", row_data[0]);
             to_ws
                 .send(
                     serde_json::to_string(&SimMessage::SetMatrixRowRgb(SetMatrixRowRgb {
@@ -107,6 +140,25 @@ async fn handle_serial_message(
                         status: Status::Success,
                     })
                     .to_bytes(),
+                )
+                .await?;
+        }
+        SerialMessage::GetDisplayInfo(GetDisplayInfo) => {
+            to_serial
+                .send(SerialMessage::GetDisplayInfoResponse(display_cfg.clone().into()).to_bytes())
+                .await?
+        }
+        SerialMessage::SetRgbMonocolor(SetRgbMonocolor { color }) => {
+            let status = if display_cfg.is_rgb {
+                *display_color = color;
+                Status::Success
+            } else {
+                Status::Failure
+            };
+            to_serial
+                .send(
+                    SerialMessage::SetRgbMonocolorResponse(SetRgbMonocolorResponse { status })
+                        .to_bytes(),
                 )
                 .await?;
         }
@@ -148,6 +200,7 @@ async fn handle_ws_message(
     from_ws: Receiver<String>,
     to_serial: Sender<Vec<u8>>,
     to_ws: Sender<String>,
+    display_cfg: &DisplayConfiguration,
 ) {
     while let Ok(msg_str) = from_ws.recv().await {
         if let Ok(msg) = serde_json::from_str::<SimMessage>(&msg_str) {
@@ -161,10 +214,12 @@ async fn handle_ws_message(
                 }
                 SimMessage::FrontendStarted => {
                     tracing::debug!("Got message indicating that the frontend is started");
-                    to_ws
-                        .send(serde_json::to_string(&SimMessage::RequestRgb).unwrap())
-                        .await
-                        .unwrap();
+                    if display_cfg.is_rgb {
+                        to_ws
+                            .send(serde_json::to_string(&SimMessage::RequestRgb).unwrap())
+                            .await
+                            .unwrap();
+                    }
                 }
                 _ => {
                     tracing::warn!("Got unexpected message from the frontend: {msg_str}");

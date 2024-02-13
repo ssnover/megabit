@@ -10,7 +10,16 @@ mod messages;
 #[tokio::main]
 async fn main() {
     use backend::*;
+    use clap::Parser;
     use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+    #[derive(Parser)]
+    struct Args {
+        #[arg(long, action = clap::ArgAction::SetFalse)]
+        is_monocolor: bool,
+    }
+
+    let args = Args::parse();
 
     tracing_subscriber::registry()
         .with(
@@ -19,6 +28,21 @@ async fn main() {
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
+
+    let display_cfg = if !args.is_monocolor {
+        DisplayConfiguration {
+            is_rgb: true,
+            width: 64,
+            height: 32,
+        }
+    } else {
+        DisplayConfiguration {
+            is_rgb: false,
+            width: 32,
+            height: 16,
+        }
+    };
+    tracing::info!("Simulating display with config: {:?}", display_cfg);
 
     let (from_ws_tx, from_ws_rx) = async_channel::unbounded();
     let (to_ws_tx, to_ws_rx) = async_channel::unbounded();
@@ -29,7 +53,7 @@ async fn main() {
         _ = web_server::serve(8000, to_ws_rx, from_ws_tx) => {
             tracing::info!("HTTP server exited");
         },
-        _ = simulator::run(from_ws_rx, from_serial_rx, to_ws_tx, to_serial_tx) => {
+        _ = simulator::run(from_ws_rx, from_serial_rx, to_ws_tx, to_serial_tx, display_cfg) => {
             tracing::info!("Simulator exited");
         }
         _ = serial::run("/tmp/megabit-sim", from_serial_tx, to_serial_rx) => {

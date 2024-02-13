@@ -10,6 +10,7 @@ backend = [
     "dep:async-channel",
     "dep:axum",
     "dep:axum-extra",
+    "dep:clap",
     "dep:cobs",
     "dep:futures-util",
     "dep:megabit-serial-protocol",
@@ -43,6 +44,7 @@ anyhow = { version = "1", optional = true }
 async-channel = { version = "2.1", optional = true }
 axum = { version = "0.7.4", features = ["ws"], optional = true }
 axum-extra = { version = "0.9.1", features = ["typed-header"], optional = true }
+clap = { version = "4.4", features = ["derive"], optional = true }
 cobs = { version = "0.2", optional = true }
 futures-util = { version = "0.3", optional = true }
 megabit-serial-protocol = { path = "../serial-protocol", optional = true }

@@ -1,11 +1,16 @@
 use std::io;
+use strum::AsRefStr;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, AsRefStr)]
 pub enum SerialMessage {
     SetLedState(SetLedState),
     SetLedStateResponse(SetLedStateResponse),
     SetRgbState(SetRgbState),
     SetRgbStateResponse(SetRgbStateResponse),
+    GetDisplayInfo(GetDisplayInfo),
+    GetDisplayInfoResponse(GetDisplayInfoResponse),
+    SetRgbMonocolor(SetRgbMonocolor),
+    SetRgbMonocolorResponse(SetRgbMonocolorResponse),
     ReportButtonPress,
     UpdateRow(UpdateRow),
     UpdateRowResponse(UpdateRowResponse),
@@ -37,6 +42,26 @@ impl SerialMessage {
             SerialMessage::UpdateRowRgbResponse(inner) => {
                 out.push(0xa0);
                 out.push(0x03);
+                out.append(&mut inner.to_bytes())
+            }
+            SerialMessage::GetDisplayInfo(inner) => {
+                out.push(0xa0);
+                out.push(0x04);
+                out.append(&mut inner.to_bytes())
+            }
+            SerialMessage::GetDisplayInfoResponse(inner) => {
+                out.push(0xa0);
+                out.push(0x05);
+                out.append(&mut inner.to_bytes())
+            }
+            SerialMessage::SetRgbMonocolor(inner) => {
+                out.push(0xa0);
+                out.push(0x06);
+                out.append(&mut inner.to_bytes())
+            }
+            SerialMessage::SetRgbMonocolorResponse(inner) => {
+                out.push(0xa0);
+                out.push(0x07);
                 out.append(&mut inner.to_bytes())
             }
             SerialMessage::SetLedState(inner) => {
@@ -353,6 +378,114 @@ pub struct UpdateRowRgbResponse {
 }
 
 impl UpdateRowRgbResponse {
+    pub fn to_bytes(self) -> Vec<u8> {
+        vec![self.status.into()]
+    }
+
+    pub fn try_from_bytes(data: &[u8]) -> io::Result<Self> {
+        if data.len() == 1 {
+            Ok(Self {
+                status: Status::try_from(data[0])?,
+            })
+        } else {
+            Err(io::ErrorKind::InvalidData.into())
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct GetDisplayInfo;
+
+impl GetDisplayInfo {
+    pub fn to_bytes(self) -> Vec<u8> {
+        vec![]
+    }
+
+    pub fn try_from_bytes(data: &[u8]) -> io::Result<Self> {
+        if data.len() == 0 {
+            Ok(Self {})
+        } else {
+            Err(io::ErrorKind::InvalidData.into())
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+#[repr(u8)]
+pub enum PixelRepresentation {
+    Monocolor = 0,
+    RGB555 = 1,
+}
+
+impl PixelRepresentation {
+    pub fn try_from_byte(byte: u8) -> io::Result<Self> {
+        Ok(match byte {
+            0 => PixelRepresentation::Monocolor,
+            1 => PixelRepresentation::RGB555,
+            _ => {
+                return Err(io::ErrorKind::InvalidData.into());
+            }
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct GetDisplayInfoResponse {
+    pub width: u32,
+    pub height: u32,
+    pub pixel_representation: PixelRepresentation,
+}
+
+impl GetDisplayInfoResponse {
+    pub fn to_bytes(self) -> Vec<u8> {
+        [
+            &self.width.to_be_bytes()[..],
+            &self.height.to_be_bytes()[..],
+            &[self.pixel_representation as u8][..],
+        ]
+        .concat()
+    }
+
+    pub fn try_from_bytes(data: &[u8]) -> io::Result<Self> {
+        if data.len() == 9 {
+            Ok(Self {
+                width: u32::from_be_bytes(data[0..4].try_into().unwrap()),
+                height: u32::from_be_bytes(data[4..8].try_into().unwrap()),
+                pixel_representation: PixelRepresentation::try_from_byte(data[8])?,
+            })
+        } else {
+            Err(io::ErrorKind::InvalidData.into())
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SetRgbMonocolor {
+    pub color: u16,
+}
+
+impl SetRgbMonocolor {
+    pub fn to_bytes(self) -> Vec<u8> {
+        Vec::from(self.color.to_be_bytes())
+    }
+
+    pub fn try_from_bytes(data: &[u8]) -> io::Result<Self> {
+        if data.len() == 2 {
+            Ok(Self {
+                color: u16::from_be_bytes(data.try_into().unwrap()),
+            })
+        } else {
+            Err(io::ErrorKind::InvalidData.into())
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SetRgbMonocolorResponse {
+    pub status: Status,
+}
+
+impl SetRgbMonocolorResponse {
     pub fn to_bytes(self) -> Vec<u8> {
         vec![self.status.into()]
     }
