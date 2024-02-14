@@ -28,17 +28,25 @@ fn main() -> anyhow::Result<()> {
         .build()?;
 
     let (tx, rx) = async_channel::unbounded();
-    let (serial_conn, serial_task) = serial::start_serial_task(args.device, tx);
+    let (serial_conn, serial_task) = serial::start_serial_task(args.device, tx, rx);
     let serial_conn = serial::SyncSerialConnection::new(serial_conn, rt.handle().clone());
 
     let _serial_task_handle = rt.spawn(Box::into_pin(serial_task));
+
+    let display_info = serial_conn.get_display_info()?;
+    tracing::info!("Retrieved info about the display: {display_info:?}");
 
     let mut wasm_app = wasm_env::WasmAppRunner::new(args.app, serial_conn)?;
     wasm_app.setup_app()?;
 
     loop {
-        wasm_app.run_app_once()?;
-        std::thread::sleep(Duration::from_millis(500));
+        match wasm_app.run_app_once() {
+            Ok(()) => std::thread::sleep(Duration::from_millis(500)),
+            Err(err) => {
+                tracing::error!("Running Wasm app failed: {err}, exiting");
+                break;
+            }
+        }
     }
 
     Ok(())

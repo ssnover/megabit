@@ -9,8 +9,6 @@ pub enum SerialMessage {
     SetRgbStateResponse(SetRgbStateResponse),
     GetDisplayInfo(GetDisplayInfo),
     GetDisplayInfoResponse(GetDisplayInfoResponse),
-    SetRgbMonocolor(SetRgbMonocolor),
-    SetRgbMonocolorResponse(SetRgbMonocolorResponse),
     ReportButtonPress,
     UpdateRow(UpdateRow),
     UpdateRowResponse(UpdateRowResponse),
@@ -52,16 +50,6 @@ impl SerialMessage {
             SerialMessage::GetDisplayInfoResponse(inner) => {
                 out.push(0xa0);
                 out.push(0x05);
-                out.append(&mut inner.to_bytes())
-            }
-            SerialMessage::SetRgbMonocolor(inner) => {
-                out.push(0xa0);
-                out.push(0x06);
-                out.append(&mut inner.to_bytes())
-            }
-            SerialMessage::SetRgbMonocolorResponse(inner) => {
-                out.push(0xa0);
-                out.push(0x07);
                 out.append(&mut inner.to_bytes())
             }
             SerialMessage::SetLedState(inner) => {
@@ -452,48 +440,6 @@ impl GetDisplayInfoResponse {
                 width: u32::from_be_bytes(data[0..4].try_into().unwrap()),
                 height: u32::from_be_bytes(data[4..8].try_into().unwrap()),
                 pixel_representation: PixelRepresentation::try_from_byte(data[8])?,
-            })
-        } else {
-            Err(io::ErrorKind::InvalidData.into())
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct SetRgbMonocolor {
-    pub color: u16,
-}
-
-impl SetRgbMonocolor {
-    pub fn to_bytes(self) -> Vec<u8> {
-        Vec::from(self.color.to_be_bytes())
-    }
-
-    pub fn try_from_bytes(data: &[u8]) -> io::Result<Self> {
-        if data.len() == 2 {
-            Ok(Self {
-                color: u16::from_be_bytes(data.try_into().unwrap()),
-            })
-        } else {
-            Err(io::ErrorKind::InvalidData.into())
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct SetRgbMonocolorResponse {
-    pub status: Status,
-}
-
-impl SetRgbMonocolorResponse {
-    pub fn to_bytes(self) -> Vec<u8> {
-        vec![self.status.into()]
-    }
-
-    pub fn try_from_bytes(data: &[u8]) -> io::Result<Self> {
-        if data.len() == 1 {
-            Ok(Self {
-                status: Status::try_from(data[0])?,
             })
         } else {
             Err(io::ErrorKind::InvalidData.into())

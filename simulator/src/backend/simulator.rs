@@ -27,19 +27,9 @@ async fn handle_serial_packets(
     to_serial: Sender<Vec<u8>>,
     display_cfg: DisplayConfiguration,
 ) {
-    let mut monocolor_display_color = 0b11111_00000_00000u16;
-
     while let Ok(msg) = from_serial.recv().await {
         if let Ok(msg) = SerialMessage::try_from_bytes(&msg[..]) {
-            if let Err(err) = handle_serial_message(
-                &to_serial,
-                &to_ws,
-                &display_cfg,
-                &mut monocolor_display_color,
-                msg,
-            )
-            .await
-            {
+            if let Err(err) = handle_serial_message(&to_serial, &to_ws, &display_cfg, msg).await {
                 tracing::error!("Error on handling serial message: {err}");
             }
         }
@@ -50,7 +40,6 @@ async fn handle_serial_message(
     to_serial: &Sender<Vec<u8>>,
     to_ws: &Sender<String>,
     display_cfg: &DisplayConfiguration,
-    display_color: &mut u16,
     msg: SerialMessage,
 ) -> anyhow::Result<()> {
     tracing::debug!("Handling serial message: {}", msg.as_ref());
@@ -78,20 +67,7 @@ async fn handle_serial_message(
                     .flatten()
                     .collect::<Vec<bool>>();
                 let status = if display_cfg.is_rgb {
-                    if let Ok(msg) =
-                        serde_json::to_string(&SimMessage::SetMatrixRowRgb(SetMatrixRowRgb {
-                            row: usize::from(row_number),
-                            data: pixel_states
-                                .into_iter()
-                                .map(|state| if state { *display_color } else { 0 })
-                                .collect(),
-                        }))
-                    {
-                        let _ = to_ws.send(msg).await;
-                        Status::Success
-                    } else {
-                        Status::Failure
-                    }
+                    Status::Failure
                 } else {
                     if let Ok(msg) =
                         serde_json::to_string(&SimMessage::SetMatrixRow(SetMatrixRow {
@@ -147,20 +123,6 @@ async fn handle_serial_message(
             to_serial
                 .send(SerialMessage::GetDisplayInfoResponse(display_cfg.clone().into()).to_bytes())
                 .await?
-        }
-        SerialMessage::SetRgbMonocolor(SetRgbMonocolor { color }) => {
-            let status = if display_cfg.is_rgb {
-                *display_color = color;
-                Status::Success
-            } else {
-                Status::Failure
-            };
-            to_serial
-                .send(
-                    SerialMessage::SetRgbMonocolorResponse(SetRgbMonocolorResponse { status })
-                        .to_bytes(),
-                )
-                .await?;
         }
         SerialMessage::SetLedState(SetLedState { new_state }) => {
             if let Ok(msg) =

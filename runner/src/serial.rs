@@ -21,6 +21,7 @@ enum SerialTaskRequest {
 pub fn start_serial_task(
     device_path: impl AsRef<Path>,
     msg_tx: Sender<SerialMessage>,
+    msg_rx: Receiver<SerialMessage>,
 ) -> (SerialConnection, Box<dyn Future<Output = ()> + Send + Sync>) {
     let (tx, rx) = async_channel::unbounded();
     let device_path = device_path.as_ref().to_path_buf();
@@ -45,12 +46,19 @@ pub fn start_serial_task(
         tokio::join!(serial_future, ping_task);
     };
 
-    (SerialConnection { actor_tx: tx }, Box::new(serial_task))
+    (
+        SerialConnection {
+            actor_tx: tx,
+            serial_message_rx: msg_rx,
+        },
+        Box::new(serial_task),
+    )
 }
 
 #[derive(Clone, Debug)]
 pub struct SerialConnection {
     actor_tx: Sender<SerialTaskRequest>,
+    serial_message_rx: Receiver<SerialMessage>,
 }
 
 impl SerialConnection {
@@ -95,6 +103,27 @@ impl SerialConnection {
         }))
         .await
     }
+
+    pub async fn update_row_rgb(&self, row_number: u8, row_data: Vec<u16>) -> io::Result<()> {
+        self.send_message(SerialMessage::UpdateRowRgb(UpdateRowRgb {
+            row_number,
+            row_data_len: row_data.len() as u8,
+            row_data,
+        }))
+        .await
+    }
+
+    pub async fn get_display_info(&self) -> io::Result<GetDisplayInfoResponse> {
+        self.send_message(SerialMessage::GetDisplayInfo(GetDisplayInfo))
+            .await?;
+        while let Ok(msg) = self.serial_message_rx.recv().await {
+            if let SerialMessage::GetDisplayInfoResponse(inner) = msg {
+                return Ok(inner);
+            }
+        }
+
+        Err(io::ErrorKind::ConnectionAborted.into())
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -121,6 +150,16 @@ impl SyncSerialConnection {
     pub fn update_row(&self, row_number: u8, row_data: Vec<bool>) -> io::Result<()> {
         self.rt
             .block_on(async { self.inner.update_row(row_number, row_data).await })
+    }
+
+    pub fn update_row_rgb(&self, row_number: u8, row_data: Vec<u16>) -> io::Result<()> {
+        self.rt
+            .block_on(async { self.inner.update_row_rgb(row_number, row_data).await })
+    }
+
+    pub fn get_display_info(&self) -> io::Result<GetDisplayInfoResponse> {
+        self.rt
+            .block_on(async { self.inner.get_display_info().await })
     }
 }
 
