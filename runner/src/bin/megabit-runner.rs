@@ -1,13 +1,14 @@
 use clap::Parser;
+use megabit_runner::{display::DisplayConfiguration, serial, wasm_env};
+use megabit_serial_protocol::PixelRepresentation;
 use std::{path::PathBuf, time::Duration};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-
-use megabit_runner::{serial, wasm_env};
 
 #[derive(Clone, Debug, Parser)]
 pub struct Args {
     #[arg(short, long)]
     device: PathBuf,
+    /// Directory containing an app manifest
     #[arg(short, long)]
     app: PathBuf,
 }
@@ -34,9 +35,18 @@ fn main() -> anyhow::Result<()> {
     let _serial_task_handle = rt.spawn(Box::into_pin(serial_task));
 
     let display_info = serial_conn.get_display_info()?;
+    let display_info = DisplayConfiguration {
+        width: display_info.width as usize,
+        height: display_info.height as usize,
+        is_rgb: matches!(
+            display_info.pixel_representation,
+            PixelRepresentation::RGB555
+        ),
+    };
     tracing::info!("Retrieved info about the display: {display_info:?}");
 
-    let mut wasm_app = wasm_env::WasmAppRunner::new(args.app, serial_conn)?;
+    let mut wasm_app = wasm_env::WasmAppRunner::new(args.app, serial_conn, display_info)?;
+    tracing::info!("Running app: {}", wasm_app.name());
     wasm_app.setup_app()?;
 
     loop {
