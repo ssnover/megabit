@@ -54,47 +54,11 @@ async fn handle_serial_message(
             row_data_len,
             row_data,
         }) => {
-            if usize::from((row_data_len / 8) + if row_data_len % 8 == 0 { 0 } else { 1 })
-                == row_data.len()
-            {
-                let pixel_states = row_data
-                    .into_iter()
-                    .map(|byte| {
-                        (0..8)
-                            .into_iter()
-                            .map(move |bit| (byte & (1 << bit)) != 0x00)
-                    })
-                    .flatten()
-                    .collect::<Vec<bool>>();
-                let status = if display_cfg.is_rgb {
-                    Status::Failure
-                } else {
-                    if let Ok(msg) =
-                        serde_json::to_string(&SimMessage::SetMatrixRow(SetMatrixRow {
-                            row: usize::from(row_number),
-                            data: pixel_states,
-                        }))
-                    {
-                        let _ = to_ws.send(msg).await;
-                        Status::Success
-                    } else {
-                        Status::Failure
-                    }
-                };
-                to_serial
-                    .send(SerialMessage::UpdateRowResponse(UpdateRowResponse { status }).to_bytes())
-                    .await?;
-            } else {
-                tracing::warn!("Got a request to write a matrix row of invalid length");
-                to_serial
-                    .send(
-                        SerialMessage::UpdateRowResponse(UpdateRowResponse {
-                            status: Status::Failure,
-                        })
-                        .to_bytes(),
-                    )
-                    .await?;
-            }
+            let status =
+                handle_update_row(to_ws, display_cfg, row_number, row_data_len, row_data).await;
+            to_serial
+                .send(SerialMessage::UpdateRowResponse(UpdateRowResponse { status }).to_bytes())
+                .await?;
         }
         SerialMessage::UpdateRowRgb(UpdateRowRgb {
             row_number,
@@ -156,6 +120,43 @@ async fn handle_serial_message(
     }
 
     Ok(())
+}
+
+async fn handle_update_row(
+    to_ws: &Sender<String>,
+    display_cfg: &DisplayConfiguration,
+    row_number: u8,
+    row_data_len: u8,
+    row_data: Vec<u8>,
+) -> Status {
+    if usize::from((row_data_len / 8) + if row_data_len % 8 == 0 { 0 } else { 1 }) == row_data.len()
+    {
+        let pixel_states = row_data
+            .into_iter()
+            .map(|byte| {
+                (0..8)
+                    .into_iter()
+                    .map(move |bit| (byte & (1 << bit)) != 0x00)
+            })
+            .flatten()
+            .collect::<Vec<bool>>();
+        if display_cfg.is_rgb {
+            Status::Failure
+        } else {
+            if let Ok(msg) = serde_json::to_string(&SimMessage::SetMatrixRow(SetMatrixRow {
+                row: usize::from(row_number),
+                data: pixel_states,
+            })) {
+                let _ = to_ws.send(msg).await;
+                Status::Success
+            } else {
+                Status::Failure
+            }
+        }
+    } else {
+        tracing::warn!("Got a request to write a matrix row of invalid length");
+        Status::Failure
+    }
 }
 
 async fn handle_ws_message(
