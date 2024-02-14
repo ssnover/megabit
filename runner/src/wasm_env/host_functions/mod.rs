@@ -1,7 +1,83 @@
 use super::PersistentData;
+use extism::UserData;
 
 mod display;
 mod kv_store;
+
+pub fn with_host_functions<'a>(
+    builder: extism::PluginBuilder<'a>,
+    user_data: &UserData<PersistentData>,
+) -> extism::PluginBuilder<'a> {
+    with_screen_functions(with_kv_functions(builder, user_data), user_data).with_function(
+        "log",
+        [extism::PTR, extism::PTR],
+        [extism::PTR],
+        extism::UserData::new(()),
+        log,
+    )
+}
+
+pub fn with_screen_functions<'a>(
+    builder: extism::PluginBuilder<'a>,
+    user_data: &UserData<PersistentData>,
+) -> extism::PluginBuilder<'a> {
+    builder
+        .with_function(
+            "write_region",
+            [
+                extism::PTR,
+                extism::PTR,
+                extism::PTR,
+                extism::PTR,
+                extism::PTR,
+            ],
+            [extism::PTR],
+            user_data.clone(),
+            write_region,
+        )
+        .with_function(
+            "render",
+            [extism::PTR],
+            [extism::PTR],
+            user_data.clone(),
+            render,
+        )
+        .with_function(
+            "set_monocolor_palette",
+            [extism::PTR, extism::PTR],
+            [extism::PTR],
+            user_data.clone(),
+            set_monocolor_palette,
+        )
+        .with_function(
+            "get_display_info",
+            [],
+            [extism::PTR],
+            user_data.clone(),
+            get_display_info,
+        )
+}
+
+pub fn with_kv_functions<'a>(
+    builder: extism::PluginBuilder<'a>,
+    user_data: &UserData<PersistentData>,
+) -> extism::PluginBuilder<'a> {
+    builder
+        .with_function(
+            "kv_store_read",
+            [extism::PTR],
+            [extism::PTR],
+            user_data.clone(),
+            kv_store_read,
+        )
+        .with_function(
+            "kv_store_write",
+            [extism::PTR, extism::PTR],
+            [extism::PTR],
+            user_data.clone(),
+            kv_store_write,
+        )
+}
 
 extism::host_fn!(pub write_region(user_data: PersistentData; position_x: u32, position_y: u32, width: u32, height: u32, buffer_data: Vec<u8>) {
     let data = user_data.get()?;

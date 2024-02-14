@@ -1,3 +1,4 @@
+use self::host_functions::with_host_functions;
 use crate::{
     display::{DisplayConfiguration, ScreenBuffer, DEFAULT_MONO_PALETTE},
     serial::SyncSerialConnection,
@@ -16,6 +17,27 @@ struct PersistentData {
     serial_conn: SyncSerialConnection,
 }
 
+impl PersistentData {
+    fn new(serial_conn: SyncSerialConnection, display_cfg: DisplayConfiguration) -> Self {
+        let screen_buffer = Rc::new(RefCell::new(ScreenBuffer::new(
+            display_cfg.width,
+            display_cfg.height,
+            if display_cfg.is_rgb {
+                Some(DEFAULT_MONO_PALETTE)
+            } else {
+                None
+            },
+        )));
+        let kv_store = Rc::new(RefCell::new(BTreeMap::new()));
+
+        PersistentData {
+            screen_buffer,
+            kv_store,
+            serial_conn,
+        }
+    }
+}
+
 pub struct WasmAppRunner {
     app: extism::Plugin,
     name: String,
@@ -29,82 +51,10 @@ impl WasmAppRunner {
     ) -> anyhow::Result<Self> {
         let app_manifest = AppManifest::open(app_path)?;
         let wasm_app_bin = extism::Wasm::file(app_manifest.app_bin_path);
-        let screen_buffer = Rc::new(RefCell::new(ScreenBuffer::new(
-            display_cfg.width,
-            display_cfg.height,
-            if display_cfg.is_rgb {
-                Some(DEFAULT_MONO_PALETTE)
-            } else {
-                None
-            },
-        )));
-        let kv_store = Rc::new(RefCell::new(BTreeMap::new()));
-
-        let data = PersistentData {
-            screen_buffer,
-            kv_store,
-            serial_conn,
-        };
-        let user_data = extism::UserData::new(data);
-
+        let user_data = extism::UserData::new(PersistentData::new(serial_conn, display_cfg));
         let manifest = extism::Manifest::new([wasm_app_bin]);
-        let plugin = extism::PluginBuilder::new(manifest)
+        let plugin = with_host_functions(extism::PluginBuilder::new(manifest), &user_data)
             .with_wasi(true)
-            .with_function(
-                "write_region",
-                [
-                    extism::PTR,
-                    extism::PTR,
-                    extism::PTR,
-                    extism::PTR,
-                    extism::PTR,
-                ],
-                [extism::PTR],
-                user_data.clone(),
-                host_functions::write_region,
-            )
-            .with_function(
-                "render",
-                [extism::PTR],
-                [extism::PTR],
-                user_data.clone(),
-                host_functions::render,
-            )
-            .with_function(
-                "set_monocolor_palette",
-                [extism::PTR, extism::PTR],
-                [extism::PTR],
-                user_data.clone(),
-                host_functions::set_monocolor_palette,
-            )
-            .with_function(
-                "get_display_info",
-                [],
-                [extism::PTR],
-                user_data.clone(),
-                host_functions::get_display_info,
-            )
-            .with_function(
-                "kv_store_read",
-                [extism::PTR],
-                [extism::PTR],
-                user_data.clone(),
-                host_functions::kv_store_read,
-            )
-            .with_function(
-                "kv_store_write",
-                [extism::PTR, extism::PTR],
-                [extism::PTR],
-                user_data.clone(),
-                host_functions::kv_store_write,
-            )
-            .with_function(
-                "log",
-                [extism::PTR, extism::PTR],
-                [extism::PTR],
-                extism::UserData::new(()),
-                host_functions::log,
-            )
             .build()?;
 
         Ok(WasmAppRunner {
