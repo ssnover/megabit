@@ -4,7 +4,7 @@ use crate::{
     serial::SyncSerialConnection,
 };
 use app_manifest::AppManifest;
-use std::{cell::RefCell, collections::BTreeMap, path::Path, rc::Rc};
+use std::{cell::RefCell, collections::BTreeMap, path::Path, rc::Rc, time::Duration};
 
 mod app_manifest;
 mod host_functions;
@@ -41,6 +41,7 @@ impl PersistentData {
 pub struct WasmAppRunner {
     app: extism::Plugin,
     name: String,
+    refresh_period: Option<Duration>,
 }
 
 impl WasmAppRunner {
@@ -60,11 +61,16 @@ impl WasmAppRunner {
         Ok(WasmAppRunner {
             app: plugin,
             name: app_manifest.app_name,
+            refresh_period: app_manifest.refresh_period,
         })
     }
 
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    pub fn refresh_period(&self) -> Option<Duration> {
+        self.refresh_period
     }
 
     pub fn setup_app(&mut self) -> anyhow::Result<()> {

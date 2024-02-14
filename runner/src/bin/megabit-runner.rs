@@ -1,7 +1,7 @@
 use clap::Parser;
 use megabit_runner::{display::DisplayConfiguration, serial, wasm_env};
 use megabit_serial_protocol::PixelRepresentation;
-use std::{path::PathBuf, time::Duration};
+use std::path::PathBuf;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Clone, Debug, Parser)]
@@ -49,12 +49,18 @@ fn main() -> anyhow::Result<()> {
     tracing::info!("Running app: {}", wasm_app.name());
     wasm_app.setup_app()?;
 
-    loop {
-        match wasm_app.run_app_once() {
-            Ok(()) => std::thread::sleep(Duration::from_millis(500)),
-            Err(err) => {
-                tracing::error!("Running Wasm app failed: {err}, exiting");
-                break;
+    if let Some(refresh_period) = wasm_app.refresh_period() {
+        loop {
+            let start_time = std::time::Instant::now();
+            match wasm_app.run_app_once() {
+                Ok(()) => std::thread::sleep(start_time.elapsed() - refresh_period),
+                Err(err) => {
+                    tracing::error!(
+                        "Running Wasm app {} failed: {err}, exiting",
+                        wasm_app.name()
+                    );
+                    break;
+                }
             }
         }
     }

@@ -2,6 +2,7 @@ use serde::Deserialize;
 use std::{
     io::{self, Read},
     path::{Path, PathBuf},
+    time::Duration,
 };
 
 #[derive(Debug, Clone)]
@@ -9,12 +10,14 @@ pub struct AppManifest {
     pub path: PathBuf,
     pub app_name: String,
     pub app_bin_path: PathBuf,
+    pub refresh_period: Option<Duration>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 struct ManifestSchema {
     name: String,
     bin: String,
+    refresh_period_ms: Option<u32>,
 }
 
 impl AppManifest {
@@ -41,6 +44,9 @@ impl AppManifest {
                 path: manifest_filepath,
                 app_name: manifest.name,
                 app_bin_path: bin_path,
+                refresh_period: manifest
+                    .refresh_period_ms
+                    .map(|duration| Duration::from_millis(duration.into())),
             })
         } else {
             tracing::error!(
