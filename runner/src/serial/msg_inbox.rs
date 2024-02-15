@@ -46,13 +46,17 @@ impl MessageInbox {
 
     pub async fn run(self) {
         while let Ok(msg) = self.msg_rx.recv().await {
+            if matches!(msg, SerialMessage::PingResponse) {
+                continue;
+            }
             {
                 let mut msg_queue = self.msg_queue.lock().unwrap();
+                tracing::debug!("Inbox got {msg:?}");
                 msg_queue.push_back((std::time::Instant::now(), msg));
 
                 if let Some(expiration_age) = self.msg_expiration_duration {
                     while let Some((receive_time, _msg)) = msg_queue.get(0) {
-                        if *receive_time + expiration_age > std::time::Instant::now() {
+                        if receive_time.elapsed() > expiration_age {
                             let _ = msg_queue.pop_front();
                         } else {
                             break;
@@ -60,6 +64,7 @@ impl MessageInbox {
                     }
                 }
             }
+            tracing::trace!("Alerting handles of new messages");
             let _ = self
                 .notification_tx
                 .send(HandleNotification::NewMessages)
@@ -75,14 +80,11 @@ impl MessageInbox {
 }
 
 impl InboxHandle {
-    pub async fn wait_for_message<F>(
+    pub async fn wait_for_message(
         &self,
-        matcher: F,
+        matcher: Box<dyn Fn(&SerialMessage) -> bool>,
         timeout: Option<Duration>,
-    ) -> Option<SerialMessage>
-    where
-        F: Fn(&SerialMessage) -> bool,
-    {
+    ) -> Option<SerialMessage> {
         let timeout_instant = timeout.map(|duration| std::time::Instant::now() + duration);
         loop {
             let msg = if let Some(msg_queue) = self.msg_queue.upgrade() {
@@ -103,6 +105,7 @@ impl InboxHandle {
             if let Some(msg) = msg {
                 break Some(msg);
             } else {
+                tracing::trace!("No match, waiting for new messages");
                 let notification = if let Some(timeout_instant) = timeout_instant {
                     let time_left = timeout_instant - std::time::Instant::now();
                     match tokio::time::timeout(time_left, self.notification_rx.recv()).await {
@@ -126,14 +129,11 @@ impl InboxHandle {
         }
     }
 
-    pub fn check_for_message_since<F>(
+    pub fn check_for_message_since(
         &self,
-        matcher: F,
+        matcher: Box<dyn Fn(&SerialMessage) -> bool>,
         start_time: Instant,
-    ) -> Option<SerialMessage>
-    where
-        F: Fn(&SerialMessage) -> bool,
-    {
+    ) -> Option<SerialMessage> {
         if let Some(msg_queue) = self.msg_queue.upgrade() {
             let msg_queue = msg_queue.lock().expect("Mutex locks");
             msg_queue.iter().find_map(|(receive_time, msg)| {

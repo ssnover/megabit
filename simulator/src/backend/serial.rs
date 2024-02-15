@@ -64,7 +64,7 @@ impl VirtualSerial {
         // a pseudoterminal, I've observed written data being read out (as if it was echoed from
         // the other side). My goal here is principally to prevent this task from starving the
         // other one.
-        let mut incoming_buffer = Vec::with_capacity(1024);
+        let mut incoming_buffer = Vec::with_capacity(2048);
         loop {
             if let Ok(Err(err)) = tokio::time::timeout(
                 Duration::from_millis(5),
@@ -79,7 +79,7 @@ impl VirtualSerial {
                 tracing::trace!("Got data");
                 if let Ok(decoded_data) = cobs::decode_vec(&incoming_buffer[..]) {
                     tracing::debug!(
-                        "Decoded a payload of {} bytes from buffer of {} bytes. Whole buffer: {incoming_buffer:02x?}",
+                        "Decoded a payload of {} bytes from buffer of {} bytes",
                         decoded_data.len(),
                         incoming_buffer.len()
                     );
@@ -97,7 +97,7 @@ impl VirtualSerial {
                 }
             }
 
-            tokio::time::sleep(Duration::from_millis(5)).await;
+            tokio::time::sleep(Duration::from_millis(1)).await;
         }
 
         tracing::info!("Exiting handler for incoming serial data");
@@ -111,22 +111,35 @@ impl VirtualSerial {
             let mut encoded_data = cobs::encode_vec(&msg[..]);
             encoded_data.push(0x00);
             tracing::debug!("Sending serial data: {encoded_data:02x?}");
-            // The following is hanging for unclear reasons...
-            if tokio::time::timeout(Duration::from_secs(5), async {
-                if let Err(err) = writer.write_all(&encoded_data[..]).await {
-                    tracing::error!("Failed to write encoded serial packet: {err}");
+            send_data_stubbornly(&mut writer, &encoded_data[..]).await
+        }
+    }
+}
+
+async fn send_data_stubbornly(writer: &mut WriteHalf<File>, data: &[u8]) {
+    let mut attempts = 0u32;
+    loop {
+        attempts += 1;
+        match tokio::time::timeout(Duration::from_secs(5), async {
+            if let Err(err) = writer.write_all(data).await {
+                tracing::error!("Failed to write encoded serial packet: {err}");
+                return Err(err);
+            }
+            Ok(())
+        })
+        .await
+        {
+            Err(_) => tracing::debug!("Writing timed out"),
+            Ok(Ok(())) => {
+                if attempts > 1 {
+                    tracing::debug!("Serial send complete after {attempts} attempts");
                 } else {
-                    if let Err(err) = writer.flush().await {
-                        tracing::error!("Failed to flush: {err}");
-                    }
+                    tracing::debug!("Serial send complete");
                 }
-            })
-            .await
-            .is_err()
-            {
-                tracing::debug!("Writing timed out");
-            } else {
-                tracing::debug!("Serial send complete");
+                break;
+            }
+            Ok(Err(_)) => {
+                tracing::debug!("Try again!");
             }
         }
     }

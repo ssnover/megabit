@@ -96,25 +96,19 @@ impl SerialConnection {
         })?
     }
 
-    pub async fn wait_for_message<F>(
+    pub async fn wait_for_message(
         &self,
-        matcher: F,
+        matcher: Box<dyn Fn(&SerialMessage) -> bool>,
         timeout: Option<Duration>,
-    ) -> Option<SerialMessage>
-    where
-        F: Fn(&SerialMessage) -> bool,
-    {
+    ) -> Option<SerialMessage> {
         self.inbox_handle.wait_for_message(matcher, timeout).await
     }
 
-    pub fn check_for_message_since<F>(
+    pub fn check_for_message_since(
         &self,
-        matcher: F,
+        matcher: Box<dyn Fn(&SerialMessage) -> bool>,
         start_time: Instant,
-    ) -> Option<SerialMessage>
-    where
-        F: Fn(&SerialMessage) -> bool,
-    {
+    ) -> Option<SerialMessage> {
         self.inbox_handle
             .check_for_message_since(matcher, start_time)
     }
@@ -172,26 +166,20 @@ impl SyncSerialConnection {
         Self { inner: conn, rt }
     }
 
-    pub fn wait_for_message<F>(
+    pub fn wait_for_message(
         &self,
-        matcher: F,
+        matcher: Box<dyn Fn(&SerialMessage) -> bool>,
         timeout: Option<Duration>,
-    ) -> Option<SerialMessage>
-    where
-        F: Fn(&SerialMessage) -> bool,
-    {
+    ) -> Option<SerialMessage> {
         self.rt
             .block_on(async { self.inner.wait_for_message(matcher, timeout).await })
     }
 
-    pub fn check_for_message_since<F>(
+    pub fn check_for_message_since(
         &self,
-        matcher: F,
+        matcher: Box<dyn Fn(&SerialMessage) -> bool>,
         start_time: Instant,
-    ) -> Option<SerialMessage>
-    where
-        F: Fn(&SerialMessage) -> bool,
-    {
+    ) -> Option<SerialMessage> {
         self.inner.check_for_message_since(matcher, start_time)
     }
 
@@ -293,7 +281,7 @@ async fn handle_serial_msgs(
                         incoming_serial_buffer.len()
                     );
                     if let Ok(msg) = SerialMessage::try_from_bytes(&decoded_data[..]) {
-                        tracing::debug!("Decoded a message: {msg:?}");
+                        tracing::trace!("Decoded a message: {msg:?}");
                         if let Err(err) = incoming_msg_tx.send(msg).await {
                             tracing::error!("Failed to forward deserialized device message: {err}");
                             return Err(err.into());

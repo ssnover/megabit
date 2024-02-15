@@ -31,7 +31,10 @@ async fn main() -> anyhow::Result<()> {
     let colors = [(0xff, 0x00, 0x00), (0x00, 0xff, 0x00), (0x00, 0x00, 0xff)];
 
     serial_conn
-        .wait_for_message(|msg| matches!(msg, &SerialMessage::ReportButtonPress), None)
+        .wait_for_message(
+            Box::new(|msg| matches!(msg, &SerialMessage::ReportButtonPress)),
+            None,
+        )
         .await;
 
     for row in 0..16 {

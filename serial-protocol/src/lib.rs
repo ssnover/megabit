@@ -104,6 +104,12 @@ impl SerialMessage {
                 (0xa0, 0x03) => Ok(SerialMessage::UpdateRowRgbResponse(
                     UpdateRowRgbResponse::try_from_bytes(&data[2..])?,
                 )),
+                (0xa0, 0x04) => Ok(SerialMessage::GetDisplayInfo(
+                    GetDisplayInfo::try_from_bytes(&data[2..])?,
+                )),
+                (0xa0, 0x05) => Ok(SerialMessage::GetDisplayInfoResponse(
+                    GetDisplayInfoResponse::try_from_bytes(&data[2..])?,
+                )),
                 (0xde, 0x00) => Ok(SerialMessage::SetLedState(SetLedState::try_from_bytes(
                     &data[2..],
                 )?)),
@@ -117,6 +123,7 @@ impl SerialMessage {
                     SetRgbStateResponse::try_from_bytes(&data[2..])?,
                 )),
                 (0xde, 0x04) => Ok(SerialMessage::ReportButtonPress),
+                (0xde, 0xfe) => Ok(SerialMessage::Ping),
                 (0xde, 0xff) => Ok(SerialMessage::PingResponse),
                 _ => {
                     tracing::error!(

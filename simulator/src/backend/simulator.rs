@@ -32,6 +32,19 @@ async fn handle_serial_packets(
             if let Err(err) = handle_serial_message(&to_serial, &to_ws, &display_cfg, msg).await {
                 tracing::error!("Error on handling serial message: {err}");
             }
+        } else {
+            if msg.len() >= 2 {
+                tracing::warn!(
+                    "Failed to parse serial message with message type: 0x{:02x}{:02x}",
+                    msg[0],
+                    msg[1]
+                )
+            } else {
+                tracing::error!(
+                    "Got message with length {}, not even long enough to have a message type",
+                    msg.len()
+                );
+            }
         }
     }
 }
@@ -169,7 +182,7 @@ async fn handle_ws_message(
         if let Ok(msg) = serde_json::from_str::<SimMessage>(&msg_str) {
             match msg {
                 SimMessage::ReportButtonPress => {
-                    tracing::debug!("Sending button press notification");
+                    tracing::info!("Sending button press notification");
                     to_serial
                         .send(SerialMessage::ReportButtonPress.to_bytes())
                         .await

@@ -15,21 +15,22 @@ async fn main() {
 
     #[derive(Parser)]
     struct Args {
-        #[arg(long, action = clap::ArgAction::SetFalse)]
-        is_monocolor: bool,
+        #[arg(long)]
+        is_monocolor: Option<bool>,
     }
 
     let args = Args::parse();
 
     tracing_subscriber::registry()
         .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "megabit_coproc_simulator=debug,tower_http=info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                "megabit_coproc_simulator=debug,megabit_serial_protocol=warn,tower_http=info".into()
+            }),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let display_cfg = if !args.is_monocolor {
+    let display_cfg = if !args.is_monocolor.unwrap_or(false) {
         DisplayConfiguration {
             is_rgb: true,
             width: 64,
