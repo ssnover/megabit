@@ -4,11 +4,17 @@ use std::{
     future::Future,
     io,
     path::{Path, PathBuf},
-    time::Duration,
+    time::{Duration, Instant},
 };
-use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
-use tokio::sync::oneshot;
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf},
+    sync::oneshot,
+};
 use tokio_serial::{SerialPortBuilderExt, SerialStream};
+
+use self::msg_inbox::{InboxHandle, MessageInbox};
+
+mod msg_inbox;
 
 #[derive(Debug)]
 enum SerialTaskRequest {
@@ -42,14 +48,19 @@ pub fn start_serial_task(
         }
     };
 
+    let message_inbox = MessageInbox::new(msg_rx.clone(), Some(Duration::from_secs(30)));
+    let inbox_handle = message_inbox.get_handle();
+    let message_inbox_task = message_inbox.run();
+
     let serial_task = async move {
-        tokio::join!(serial_future, ping_task);
+        tokio::join!(serial_future, ping_task, message_inbox_task);
     };
 
     (
         SerialConnection {
             actor_tx: tx,
             serial_message_rx: msg_rx,
+            inbox_handle,
         },
         Box::new(serial_task),
     )
@@ -59,6 +70,7 @@ pub fn start_serial_task(
 pub struct SerialConnection {
     actor_tx: Sender<SerialTaskRequest>,
     serial_message_rx: Receiver<SerialMessage>,
+    inbox_handle: InboxHandle,
 }
 
 impl SerialConnection {
@@ -82,6 +94,29 @@ impl SerialConnection {
             tracing::error!("Failed to get response back for request: {err}");
             io::ErrorKind::UnexpectedEof
         })?
+    }
+
+    pub async fn wait_for_message<F>(
+        &self,
+        matcher: F,
+        timeout: Option<Duration>,
+    ) -> Option<SerialMessage>
+    where
+        F: Fn(&SerialMessage) -> bool,
+    {
+        self.inbox_handle.wait_for_message(matcher, timeout).await
+    }
+
+    pub fn check_for_message_since<F>(
+        &self,
+        matcher: F,
+        start_time: Instant,
+    ) -> Option<SerialMessage>
+    where
+        F: Fn(&SerialMessage) -> bool,
+    {
+        self.inbox_handle
+            .check_for_message_since(matcher, start_time)
     }
 
     pub async fn set_led_state(&self, new_state: bool) -> io::Result<()> {
@@ -135,6 +170,29 @@ pub struct SyncSerialConnection {
 impl SyncSerialConnection {
     pub fn new(conn: SerialConnection, rt: tokio::runtime::Handle) -> Self {
         Self { inner: conn, rt }
+    }
+
+    pub fn wait_for_message<F>(
+        &self,
+        matcher: F,
+        timeout: Option<Duration>,
+    ) -> Option<SerialMessage>
+    where
+        F: Fn(&SerialMessage) -> bool,
+    {
+        self.rt
+            .block_on(async { self.inner.wait_for_message(matcher, timeout).await })
+    }
+
+    pub fn check_for_message_since<F>(
+        &self,
+        matcher: F,
+        start_time: Instant,
+    ) -> Option<SerialMessage>
+    where
+        F: Fn(&SerialMessage) -> bool,
+    {
+        self.inner.check_for_message_since(matcher, start_time)
     }
 
     pub fn set_led_state(&self, new_state: bool) -> io::Result<()> {

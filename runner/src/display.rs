@@ -1,3 +1,4 @@
+pub use megabit_serial_protocol::PixelRepresentation;
 use std::io;
 
 #[derive(Debug, Clone)]

@@ -1,11 +1,14 @@
 use clap::Parser;
-use megabit_runner::{display::DisplayConfiguration, serial, wasm_env};
-use megabit_serial_protocol::PixelRepresentation;
+use megabit_runner::{
+    display::{DisplayConfiguration, PixelRepresentation},
+    serial, wasm_env,
+};
 use std::path::PathBuf;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Clone, Debug, Parser)]
 pub struct Args {
+    /// Path to the tty serial device for the display coprocessor
     #[arg(short, long)]
     device: PathBuf,
     /// Directory containing an app manifest
@@ -63,6 +66,9 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         }
+    } else {
+        todo!()
+        // Render and then wait for button press
     }
 
     Ok(())
