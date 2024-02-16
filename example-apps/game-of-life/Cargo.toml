@@ -1,0 +1,13 @@
+[package]
+name = "game-of-life"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate_type = ["cdylib"]
+
+[dependencies]
+embedded-graphics = "0.8.1"
+extism-pdk = "1.0"
+megabit-app-sdk = { path = "../../megabit-app-sdk" }
+rand = "0.8"
