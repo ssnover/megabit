@@ -23,8 +23,9 @@ fn main() -> anyhow::Result<()> {
 
     tracing_subscriber::registry()
         .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "megabit_runner=debug".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                "megabit_runner=debug,megabit_runner::wasm_env::host_functions::host=info".into()
+            }),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();

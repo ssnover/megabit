@@ -148,6 +148,7 @@ dependencies = [
  "extism-pdk",
  "megabit-app-sdk",
  "rand",
+ "serde",
 ]
 
 [[package]]

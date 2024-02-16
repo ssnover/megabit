@@ -1,13 +1,5 @@
+use crate::host;
 pub use log::Level;
-
-mod imports {
-    use extism_pdk::*;
-
-    #[host_fn]
-    extern "ExtismHost" {
-        pub fn log(level: u32, line: String) -> ();
-    }
-}
 
 pub fn log(level: Level, line: impl Into<String>) {
     let level = match level {
@@ -17,5 +9,5 @@ pub fn log(level: Level, line: impl Into<String>) {
         Level::Debug => 1,
         Level::Trace => 0,
     };
-    let _ = unsafe { imports::log(level, line.into()) };
+    let _ = unsafe { host::log(level, line.into()) };
 }

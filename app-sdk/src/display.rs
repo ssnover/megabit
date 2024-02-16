@@ -1,27 +1,5 @@
+use crate::host;
 use embedded_graphics::{pixelcolor::BinaryColor, prelude::*};
-
-pub mod simple {
-    pub const SCREEN_WIDTH: usize = 32;
-    pub const SCREEN_HEIGHT: usize = 16;
-    pub type DisplayBuffer = super::DisplayBuffer<SCREEN_WIDTH, SCREEN_HEIGHT>;
-}
-
-mod imports {
-    use extism_pdk::*;
-
-    #[host_fn]
-    extern "ExtismHost" {
-        pub fn write_region(
-            position_x: u32,
-            position_y: u32,
-            width: u32,
-            height: u32,
-            input_data: Vec<u8>,
-        ) -> ();
-
-        pub fn render(rows_to_update: Vec<u8>) -> ();
-    }
-}
 
 pub fn write_region(
     position: (u32, u32),
@@ -29,7 +7,7 @@ pub fn write_region(
     input_data: Vec<u8>,
 ) -> Result<(), extism_pdk::Error> {
     unsafe {
-        imports::write_region(
+        host::write_region(
             position.0,
             position.1,
             dimensions.0,
@@ -40,51 +18,62 @@ pub fn write_region(
 }
 
 pub fn render(rows_to_update: Vec<u8>) -> Result<(), extism_pdk::Error> {
-    unsafe { imports::render(rows_to_update) }
+    unsafe { host::render(rows_to_update) }
 }
 
-pub struct DisplayBuffer<const WIDTH: usize, const HEIGHT: usize> {
-    data: [[bool; WIDTH]; HEIGHT],
+pub fn set_monocolor_palette(on_color: u16, off_color: u16) -> Result<(), extism_pdk::Error> {
+    unsafe { host::set_monocolor_palette(on_color.into(), off_color.into()) }
 }
 
-impl<const WIDTH: usize, const HEIGHT: usize> DisplayBuffer<WIDTH, HEIGHT> {
-    pub fn new() -> Self {
+#[derive(Debug, Clone)]
+pub struct DisplayConfiguration {
+    pub width: usize,
+    pub height: usize,
+    pub is_rgb: bool,
+}
+
+pub fn get_display_info() -> Result<DisplayConfiguration, extism_pdk::Error> {
+    let raw_info = unsafe { host::get_display_info() }?;
+    let width = u32::from_be_bytes(raw_info[0..4].try_into()?);
+    let height = u32::from_be_bytes(raw_info[4..8].try_into()?);
+    let is_rgb = raw_info[8] != 0;
+    Ok(DisplayConfiguration {
+        width: width as usize,
+        height: height as usize,
+        is_rgb,
+    })
+}
+
+pub type MonocolorBuffer = DisplayBuffer<bool>;
+pub type RgbBuffer = DisplayBuffer<u16>;
+
+pub struct DisplayBuffer<T: Copy + Default> {
+    data: Vec<T>,
+    width: usize,
+    height: usize,
+}
+
+impl<T: Copy + Default> DisplayBuffer<T> {
+    pub fn new(width: usize, height: usize) -> Self {
         Self {
-            data: [[false; WIDTH]; HEIGHT],
+            data: vec![T::default(); width * height],
+            width,
+            height,
         }
-    }
-
-    pub fn to_vec(self) -> Vec<u8> {
-        const BITS_PER_BYTE: usize = 8;
-
-        let mut output = vec![0u8; WIDTH * HEIGHT / BITS_PER_BYTE];
-        if (WIDTH * HEIGHT) % BITS_PER_BYTE != 0 {
-            output.push(0);
-        }
-
-        for (row, row_data) in self.data.into_iter().enumerate() {
-            for (col, elem) in row_data.into_iter().enumerate() {
-                let idx = col + (row * WIDTH);
-                if elem {
-                    output[idx / BITS_PER_BYTE] |= 1 << (idx % BITS_PER_BYTE);
-                }
-            }
-        }
-
-        output
     }
 }
 
-impl<const WIDTH: usize, const HEIGHT: usize> DrawTarget for DisplayBuffer<WIDTH, HEIGHT> {
+impl DrawTarget for MonocolorBuffer {
     type Color = BinaryColor;
     type Error = ();
 
     fn clear(&mut self, _color: Self::Color) -> Result<(), Self::Error> {
-        for row in &mut self.data {
-            for col in row.into_iter() {
-                *col = false;
+        for row in 0..self.height {
+            for col in 0..self.width {
+                self.data[row * self.width + col] = BinaryColor::Off.is_on();
             }
         }
+
         Ok(())
     }
 
@@ -92,21 +81,22 @@ impl<const WIDTH: usize, const HEIGHT: usize> DrawTarget for DisplayBuffer<WIDTH
     where
         I: IntoIterator<Item = Pixel<Self::Color>>,
     {
-        for Pixel(coord, color) in pixels.into_iter() {
-            if coord.x < 0 || coord.y < 0 {
-                continue;
+        for Pixel(Point { x, y }, color) in pixels.into_iter() {
+            if (0..(self.height as isize)).contains(&(y as isize))
+                && (0..(self.width as isize)).contains(&(x as isize))
+            {
+                let row = y as usize;
+                let col = x as usize;
+                self.data[row * self.width + col] = color.is_on();
             }
-
-            let (x, y) = (coord.x as usize, coord.y as usize);
-            self.data[y][x] = color.is_on();
         }
 
         Ok(())
     }
 }
 
-impl<const WIDTH: usize, const HEIGHT: usize> OriginDimensions for DisplayBuffer<WIDTH, HEIGHT> {
+impl OriginDimensions for MonocolorBuffer {
     fn size(&self) -> Size {
-        Size::new(WIDTH as u32, HEIGHT as u32)
+        Size::new(self.width as u32, self.height as u32)
     }
 }
