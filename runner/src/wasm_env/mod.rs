@@ -46,12 +46,13 @@ pub struct WasmAppRunner {
 
 impl WasmAppRunner {
     pub fn new(
-        app_path: impl AsRef<Path>,
+        wasm_bin_path: impl AsRef<Path>,
+        refresh_period: Option<Duration>,
+        app_name: impl Into<String>,
         serial_conn: SyncSerialConnection,
         display_cfg: DisplayConfiguration,
     ) -> anyhow::Result<Self> {
-        let app_manifest = AppManifest::open(app_path)?;
-        let wasm_app_bin = extism::Wasm::file(app_manifest.app_bin_path);
+        let wasm_app_bin = extism::Wasm::file(wasm_bin_path);
         let user_data = extism::UserData::new(PersistentData::new(serial_conn, display_cfg));
         let manifest = extism::Manifest::new([wasm_app_bin]);
         let plugin = with_host_functions(extism::PluginBuilder::new(manifest), &user_data)
@@ -60,9 +61,24 @@ impl WasmAppRunner {
 
         Ok(WasmAppRunner {
             app: plugin,
-            name: app_manifest.app_name,
-            refresh_period: app_manifest.refresh_period,
+            name: app_name.into(),
+            refresh_period,
         })
+    }
+
+    pub fn from_manifest(
+        app_path: impl AsRef<Path>,
+        serial_conn: SyncSerialConnection,
+        display_cfg: DisplayConfiguration,
+    ) -> anyhow::Result<Self> {
+        let app_manifest = AppManifest::open(app_path)?;
+        Self::new(
+            app_manifest.app_bin_path,
+            app_manifest.refresh_period,
+            app_manifest.app_name,
+            serial_conn,
+            display_cfg,
+        )
     }
 
     pub fn name(&self) -> &str {

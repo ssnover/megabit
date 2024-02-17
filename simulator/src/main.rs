@@ -57,7 +57,7 @@ async fn main() {
         _ = simulator::run(from_ws_rx, from_serial_rx, to_ws_tx, to_serial_tx, display_cfg) => {
             tracing::info!("Simulator exited");
         }
-        _ = serial::run("/tmp/megabit-sim", from_serial_tx, to_serial_rx) => {
+        _ = serial::run(9009, from_serial_tx, to_serial_rx) => {
             tracing::info!("Virtual TTY exited");
         }
     };

@@ -26,14 +26,13 @@ enum SerialTaskRequest {
 
 pub fn start_serial_task(
     device_path: impl AsRef<Path>,
-    msg_tx: Sender<SerialMessage>,
-    msg_rx: Receiver<SerialMessage>,
 ) -> (SerialConnection, Box<dyn Future<Output = ()> + Send + Sync>) {
+    let (msg_tx, msg_rx) = async_channel::unbounded();
     let (tx, rx) = async_channel::unbounded();
     let device_path = device_path.as_ref().to_path_buf();
 
     let serial_future = serial_task(device_path, rx, msg_tx);
-    let ping_task = {
+    let _ping_task = {
         let tx = tx.clone();
         async move {
             loop {
@@ -48,28 +47,26 @@ pub fn start_serial_task(
         }
     };
 
-    let message_inbox = MessageInbox::new(msg_rx.clone(), Some(Duration::from_secs(30)));
+    let message_inbox = MessageInbox::new(msg_rx.clone(), Some(Duration::from_secs(5)));
     let inbox_handle = message_inbox.get_handle();
     let message_inbox_task = message_inbox.run();
 
     let serial_task = async move {
-        tokio::join!(serial_future, ping_task, message_inbox_task);
+        tokio::join!(serial_future, message_inbox_task);
     };
 
     (
         SerialConnection {
             actor_tx: tx,
-            serial_message_rx: msg_rx,
             inbox_handle,
         },
         Box::new(serial_task),
     )
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct SerialConnection {
     actor_tx: Sender<SerialTaskRequest>,
-    serial_message_rx: Receiver<SerialMessage>,
     inbox_handle: InboxHandle,
 }
 
@@ -113,49 +110,105 @@ impl SerialConnection {
             .check_for_message_since(matcher, start_time)
     }
 
-    pub async fn set_led_state(&self, new_state: bool) -> io::Result<()> {
+    pub async fn set_led_state(&self, new_state: bool) -> io::Result<SetLedStateResponse> {
         self.send_message(SerialMessage::SetLedState(SetLedState { new_state }))
-            .await
+            .await?;
+        let msg = self
+            .wait_for_message(
+                Box::new(|msg| matches!(msg, &SerialMessage::SetLedStateResponse(_))),
+                None,
+            )
+            .await;
+        match msg {
+            Some(SerialMessage::SetLedStateResponse(response)) => Ok(response),
+            Some(_) => panic!("Got unexpected message type: {msg:?}"),
+            None => Err(io::ErrorKind::ConnectionAborted.into()),
+        }
     }
 
-    pub async fn set_rgb_state(&self, (r, g, b): (u8, u8, u8)) -> io::Result<()> {
+    pub async fn set_rgb_state(&self, (r, g, b): (u8, u8, u8)) -> io::Result<SetRgbStateResponse> {
         self.send_message(SerialMessage::SetRgbState(SetRgbState { r, g, b }))
-            .await
+            .await?;
+        let msg = self
+            .wait_for_message(
+                Box::new(|msg| matches!(msg, &SerialMessage::SetRgbStateResponse(_))),
+                None,
+            )
+            .await;
+        match msg {
+            Some(SerialMessage::SetRgbStateResponse(response)) => Ok(response),
+            Some(_) => panic!("Got unexpected message type: {msg:?}"),
+            None => Err(io::ErrorKind::ConnectionAborted.into()),
+        }
     }
 
-    pub async fn update_row(&self, row_number: u8, row_data: Vec<bool>) -> io::Result<()> {
+    pub async fn update_row(
+        &self,
+        row_number: u8,
+        row_data: Vec<bool>,
+    ) -> io::Result<UpdateRowResponse> {
         let data = pack_bools_to_bytes(&row_data[..]);
         self.send_message(SerialMessage::UpdateRow(UpdateRow {
             row_number,
             row_data_len: row_data.len() as u8,
             row_data: data,
         }))
-        .await
+        .await?;
+        let msg = self
+            .wait_for_message(
+                Box::new(|msg| matches!(msg, &SerialMessage::UpdateRowResponse(_))),
+                None,
+            )
+            .await;
+        match msg {
+            Some(SerialMessage::UpdateRowResponse(response)) => Ok(response),
+            Some(_) => panic!("Got unexpected message type: {msg:?}"),
+            None => Err(io::ErrorKind::ConnectionAborted.into()),
+        }
     }
 
-    pub async fn update_row_rgb(&self, row_number: u8, row_data: Vec<u16>) -> io::Result<()> {
+    pub async fn update_row_rgb(
+        &self,
+        row_number: u8,
+        row_data: Vec<u16>,
+    ) -> io::Result<UpdateRowRgbResponse> {
         self.send_message(SerialMessage::UpdateRowRgb(UpdateRowRgb {
             row_number,
             row_data_len: row_data.len() as u8,
             row_data,
         }))
-        .await
+        .await?;
+        let msg = self
+            .wait_for_message(
+                Box::new(|msg| matches!(msg, &SerialMessage::UpdateRowRgbResponse(_))),
+                None,
+            )
+            .await;
+        match msg {
+            Some(SerialMessage::UpdateRowRgbResponse(response)) => Ok(response),
+            Some(_) => panic!("Got unexpected message type: {msg:?}"),
+            None => Err(io::ErrorKind::ConnectionAborted.into()),
+        }
     }
 
     pub async fn get_display_info(&self) -> io::Result<GetDisplayInfoResponse> {
         self.send_message(SerialMessage::GetDisplayInfo(GetDisplayInfo))
             .await?;
-        while let Ok(msg) = self.serial_message_rx.recv().await {
-            if let SerialMessage::GetDisplayInfoResponse(inner) = msg {
-                return Ok(inner);
-            }
+        let msg = self
+            .wait_for_message(
+                Box::new(|msg| matches!(msg, &SerialMessage::GetDisplayInfoResponse(_))),
+                None,
+            )
+            .await;
+        match msg {
+            Some(SerialMessage::GetDisplayInfoResponse(response)) => Ok(response),
+            Some(_) => panic!("Got unexpected message type: {msg:?}"),
+            None => Err(io::ErrorKind::ConnectionAborted.into()),
         }
-
-        Err(io::ErrorKind::ConnectionAborted.into())
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct SyncSerialConnection {
     inner: SerialConnection,
     rt: tokio::runtime::Handle,
@@ -183,22 +236,26 @@ impl SyncSerialConnection {
         self.inner.check_for_message_since(matcher, start_time)
     }
 
-    pub fn set_led_state(&self, new_state: bool) -> io::Result<()> {
+    pub fn set_led_state(&self, new_state: bool) -> io::Result<SetLedStateResponse> {
         self.rt
             .block_on(async { self.inner.set_led_state(new_state).await })
     }
 
-    pub fn set_rgb_state(&self, (r, g, b): (u8, u8, u8)) -> io::Result<()> {
+    pub fn set_rgb_state(&self, (r, g, b): (u8, u8, u8)) -> io::Result<SetRgbStateResponse> {
         self.rt
             .block_on(async { self.inner.set_rgb_state((r, g, b)).await })
     }
 
-    pub fn update_row(&self, row_number: u8, row_data: Vec<bool>) -> io::Result<()> {
+    pub fn update_row(&self, row_number: u8, row_data: Vec<bool>) -> io::Result<UpdateRowResponse> {
         self.rt
             .block_on(async { self.inner.update_row(row_number, row_data).await })
     }
 
-    pub fn update_row_rgb(&self, row_number: u8, row_data: Vec<u16>) -> io::Result<()> {
+    pub fn update_row_rgb(
+        &self,
+        row_number: u8,
+        row_data: Vec<u16>,
+    ) -> io::Result<UpdateRowRgbResponse> {
         self.rt
             .block_on(async { self.inner.update_row_rgb(row_number, row_data).await })
     }
@@ -254,6 +311,7 @@ async fn handle_requests(
     while let Ok(msg) = request_rx.recv().await {
         match msg {
             SerialTaskRequest::SendMessage { msg, response } => {
+                tracing::debug!("Send message: {}", msg.as_ref());
                 let payload = msg.to_bytes();
                 let mut payload = cobs::encode_vec(&payload[..]);
                 payload.push(0x00);

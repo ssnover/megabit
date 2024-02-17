@@ -1,5 +1,6 @@
 use gloo::{events::EventListener, utils::window};
 use std::ops::Deref;
+use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 use yew::prelude::*;
 
@@ -61,8 +62,10 @@ pub struct CanvasProperties {
 
 pub mod simple_display {
     use core::cell::RefCell;
-    use wasm_bindgen::{JsCast, JsValue};
-    use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
+    use wasm_bindgen::JsValue;
+    use web_sys::HtmlCanvasElement;
+
+    use super::get_2d_canvas;
 
     pub const PIXELS_PER_CELL: u32 = 16;
     pub const COLUMNS: u32 = 32;
@@ -112,8 +115,10 @@ pub mod simple_display {
 
 pub mod rgb_display {
     use core::cell::RefCell;
-    use wasm_bindgen::{JsCast, JsValue};
-    use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
+    use wasm_bindgen::JsValue;
+    use web_sys::HtmlCanvasElement;
+
+    use super::get_2d_canvas;
 
     const PIXELS_PER_CELL: u32 = 8;
     pub const COLUMNS: u32 = 64;

@@ -25,6 +25,24 @@ pub fn write_region(
     Ok(())
 }
 
+pub fn write_region_rgb(
+    screen_buffer: &mut ScreenBuffer,
+    position_x: u32,
+    position_y: u32,
+    width: u32,
+    height: u32,
+    buffer_data: Vec<u8>,
+) -> Result<(), extism::Error> {
+    for row in position_y..(position_y + height) {
+        for col in position_x..(position_x + width) {
+            let idx = ((col - position_x) + (width * (row - position_y)) * 2) as usize;
+            let value = u16::from_be_bytes(buffer_data[idx..idx + 2].try_into().unwrap());
+            screen_buffer.set_cell_rgb(row as usize, col as usize, value)?;
+        }
+    }
+    Ok(())
+}
+
 pub fn render(
     screen_buffer: &ScreenBuffer,
     serial_conn: SyncSerialConnection,

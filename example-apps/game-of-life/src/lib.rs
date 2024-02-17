@@ -1,6 +1,10 @@
 use conway::BoardState;
 use extism_pdk::*;
-use megabit_app_sdk::{display, kv_store, log::*};
+use megabit_app_sdk::{
+    display::{self, Color},
+    kv_store,
+    log::*,
+};
 
 mod conway;
 
@@ -16,7 +20,7 @@ pub fn setup() -> FnResult<()> {
     let display_cfg = display::get_display_info()?;
 
     if display_cfg.is_rgb {
-        display::set_monocolor_palette(0b11111_00000, 0).unwrap();
+        display::set_monocolor_palette(Color::GREEN, Color::BLACK).unwrap();
     }
 
     let mut state_a = BoardState::new(display_cfg.width, display_cfg.height);
@@ -70,10 +74,10 @@ pub fn run() -> FnResult<()> {
         }
     }
 
-    kv_store::write("state_a", state_a)?;
-    kv_store::write("state_b", state_b)?;
-    kv_store::write("show_state_a", !show_state_a)?;
-    kv_store::write("steps_without_change", steps_without_change)?;
+    kv_store::write(vars::STATE_A, state_a)?;
+    kv_store::write(vars::STATE_B, state_b)?;
+    kv_store::write(vars::SHOW_STATE_A, !show_state_a)?;
+    kv_store::write(vars::STEPS_WITHOUT_CHANGE, steps_without_change)?;
 
     Ok(())
 }

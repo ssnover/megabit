@@ -1,47 +1,32 @@
 use async_channel::{Receiver, Sender};
-use nix::pty::{self, OpenptyResult};
-use std::{
-    io,
-    os::fd::{AsRawFd, FromRawFd, IntoRawFd},
-    path::{Path, PathBuf},
-    time::Duration,
-};
+use std::{io, time::Duration};
 use tokio::{
-    fs::File,
-    io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf},
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::{
+        tcp::{ReadHalf, WriteHalf},
+        TcpListener,
+    },
 };
 
-pub struct VirtualSerial {
-    host_file: File,
-    _host_path: PathBuf,
-    _device_file: File,
-    device_path: PathBuf,
+pub struct SerialListener {
+    listener: TcpListener,
 }
 
-impl VirtualSerial {
-    pub fn new(symlink_path: impl AsRef<Path>) -> io::Result<Self> {
-        let OpenptyResult { master, slave } = pty::openpty(None, None).expect("Failed to open pty");
-        let serial = Self {
-            _host_path: nix::unistd::ttyname(master.as_raw_fd()).expect("Valid fd for pty"),
-            host_file: unsafe { File::from_raw_fd(master.into_raw_fd()) },
-            device_path: nix::unistd::ttyname(slave.as_raw_fd()).expect("Valid fd for pty"),
-            _device_file: unsafe { File::from_raw_fd(slave.into_raw_fd()) },
-        };
-        tracing::debug!("Host path: {}", serial._host_path.display());
-        if symlink_path.as_ref().exists() {
-            std::fs::remove_file(symlink_path.as_ref())?;
-        }
-        tracing::info!(
-            "Creating symlink to {} at {}",
-            serial.device_path.display(),
-            symlink_path.as_ref().display()
-        );
-        std::os::unix::fs::symlink(&serial.device_path, symlink_path)?;
-        Ok(serial)
+impl SerialListener {
+    pub async fn new(port: u16) -> io::Result<Self> {
+        let socket_addr = format!("0.0.0.0:{port}");
+        let listener = TcpListener::bind(socket_addr).await?;
+        Ok(Self { listener })
     }
 
-    pub async fn listen(self, to_simulator: Sender<Vec<u8>>, from_simulator: Receiver<Vec<u8>>) {
-        let (reader, writer) = tokio::io::split(self.host_file);
+    pub async fn listen(
+        self,
+        to_simulator: Sender<Vec<u8>>,
+        from_simulator: Receiver<Vec<u8>>,
+    ) -> io::Result<()> {
+        let (mut stream, _peer) = self.listener.accept().await?;
+        stream.set_nodelay(true)?;
+        let (reader, writer) = stream.split();
 
         tokio::join!(
             Self::handle_incoming_serial_bytes(reader, to_simulator),
@@ -49,12 +34,10 @@ impl VirtualSerial {
         );
 
         tracing::info!("Exiting serial device listening context");
+        Ok(())
     }
 
-    async fn handle_incoming_serial_bytes(
-        mut reader: ReadHalf<File>,
-        to_simulator: Sender<Vec<u8>>,
-    ) {
+    async fn handle_incoming_serial_bytes(mut reader: ReadHalf<'_>, to_simulator: Sender<Vec<u8>>) {
         // Alright, this function is a bit of a doozy. The chief problem is that tokio Files lock
         // in order to read or write because Linux has no means of polling them for new data.
         // This means we must time out the read periodically or else it will grab the lock and
@@ -64,14 +47,9 @@ impl VirtualSerial {
         // a pseudoterminal, I've observed written data being read out (as if it was echoed from
         // the other side). My goal here is principally to prevent this task from starving the
         // other one.
-        let mut incoming_buffer = Vec::with_capacity(2048);
+        let mut incoming_buffer = Vec::with_capacity(4096);
         loop {
-            if let Ok(Err(err)) = tokio::time::timeout(
-                Duration::from_millis(5),
-                reader.read_buf(&mut incoming_buffer),
-            )
-            .await
-            {
+            if let Err(err) = reader.read_buf(&mut incoming_buffer).await {
                 tracing::error!("Error reading from the pty: {err}");
             }
 
@@ -96,17 +74,12 @@ impl VirtualSerial {
                         Vec::from_iter(incoming_buffer.into_iter().skip(encoded_len + 1));
                 }
             }
-
-            tokio::time::sleep(Duration::from_millis(1)).await;
         }
 
         tracing::info!("Exiting handler for incoming serial data");
     }
 
-    async fn handle_simulator_packet(
-        mut writer: WriteHalf<File>,
-        from_simulator: Receiver<Vec<u8>>,
-    ) {
+    async fn handle_simulator_packet(mut writer: WriteHalf<'_>, from_simulator: Receiver<Vec<u8>>) {
         while let Ok(msg) = from_simulator.recv().await {
             let mut encoded_data = cobs::encode_vec(&msg[..]);
             encoded_data.push(0x00);
@@ -116,7 +89,7 @@ impl VirtualSerial {
     }
 }
 
-async fn send_data_stubbornly(writer: &mut WriteHalf<File>, data: &[u8]) {
+async fn send_data_stubbornly(writer: &mut WriteHalf<'_>, data: &[u8]) {
     let mut attempts = 0u32;
     loop {
         attempts += 1;
@@ -125,6 +98,7 @@ async fn send_data_stubbornly(writer: &mut WriteHalf<File>, data: &[u8]) {
                 tracing::error!("Failed to write encoded serial packet: {err}");
                 return Err(err);
             }
+            writer.flush().await?;
             Ok(())
         })
         .await
@@ -146,21 +120,14 @@ async fn send_data_stubbornly(writer: &mut WriteHalf<File>, data: &[u8]) {
 }
 
 pub async fn run(
-    device_path: impl AsRef<Path>,
+    port: u16,
     to_simulator: Sender<Vec<u8>>,
     from_simulator: Receiver<Vec<u8>>,
-) {
-    let virtual_device = match VirtualSerial::new(device_path.as_ref()) {
-        Ok(device) => device,
-        Err(err) => {
-            tracing::error!(
-                "Unable to create virtual serial device {}: {err}",
-                device_path.as_ref().display()
-            );
-            let _ = std::fs::remove_file(device_path.as_ref());
-            return;
-        }
-    };
+) -> io::Result<()> {
+    let virtual_device = SerialListener::new(port).await.map_err(|err| {
+        tracing::error!("Unable to create serial listener at port {port}: {err}");
+        err
+    })?;
 
     virtual_device.listen(to_simulator, from_simulator).await
 }

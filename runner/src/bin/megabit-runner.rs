@@ -34,8 +34,7 @@ fn main() -> anyhow::Result<()> {
         .enable_all()
         .build()?;
 
-    let (tx, rx) = async_channel::unbounded();
-    let (serial_conn, serial_task) = serial::start_serial_task(args.device, tx, rx);
+    let (serial_conn, serial_task) = serial::start_serial_task(args.device);
     let serial_conn = serial::SyncSerialConnection::new(serial_conn, rt.handle().clone());
 
     let _serial_task_handle = rt.spawn(Box::into_pin(serial_task));
@@ -65,9 +64,11 @@ fn main() -> anyhow::Result<()> {
             let entry = entry?;
             let path = entry.path();
             if path.is_dir() {
-                if let Ok(app) =
-                    wasm_env::WasmAppRunner::new(&path, serial_conn.clone(), display_info.clone())
-                {
+                if let Ok(app) = wasm_env::WasmAppRunner::from_manifest(
+                    &path,
+                    serial_conn.clone(),
+                    display_info.clone(),
+                ) {
                     tracing::info!("Found app {} at path: {}", app.name(), path.display());
                     Ok(Some(app))
                 } else {
@@ -96,6 +97,7 @@ fn main() -> anyhow::Result<()> {
             if let Some(refresh_period) = wasm_app.refresh_period() {
                 loop {
                     let start_time = std::time::Instant::now();
+                    tracing::debug!("Running");
                     match wasm_app.run_app_once() {
                         Ok(()) => {
                             if start_time.elapsed() < refresh_period {

@@ -1,33 +1,38 @@
-use async_channel::{Receiver, Sender};
 use megabit_serial_protocol::SerialMessage;
 use std::{
+    cell::RefCell,
     collections::VecDeque,
     sync::{Arc, Mutex, Weak},
     time::{Duration, Instant},
 };
+use tokio::sync::watch::{channel, Receiver, Sender};
 
+#[derive(Clone, Copy)]
 pub enum HandleNotification {
-    NewMessages,
+    NewMessages(Instant),
     ClosedConnection,
 }
 
 pub struct MessageInbox {
-    msg_rx: Receiver<SerialMessage>,
-    msg_queue: Arc<Mutex<VecDeque<(Instant, SerialMessage)>>>,
+    msg_rx: async_channel::Receiver<SerialMessage>,
+    msg_queue: Arc<Mutex<VecDeque<(Instant, Box<SerialMessage>)>>>,
     notification_tx: Sender<HandleNotification>,
     notification_rx: Receiver<HandleNotification>,
     msg_expiration_duration: Option<Duration>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct InboxHandle {
-    msg_queue: Weak<Mutex<VecDeque<(Instant, SerialMessage)>>>,
-    notification_rx: Receiver<HandleNotification>,
+    msg_queue: Weak<Mutex<VecDeque<(Instant, Box<SerialMessage>)>>>,
+    notification_rx: RefCell<Receiver<HandleNotification>>,
 }
 
 impl MessageInbox {
-    pub fn new(msg_rx: Receiver<SerialMessage>, msg_expiration_age: Option<Duration>) -> Self {
-        let (tx, rx) = async_channel::bounded(1);
+    pub fn new(
+        msg_rx: async_channel::Receiver<SerialMessage>,
+        msg_expiration_age: Option<Duration>,
+    ) -> Self {
+        let (tx, rx) = channel(HandleNotification::NewMessages(Instant::now()));
         Self {
             msg_rx,
             msg_queue: Arc::new(Mutex::new(VecDeque::new())),
@@ -40,7 +45,7 @@ impl MessageInbox {
     pub fn get_handle(&self) -> InboxHandle {
         InboxHandle {
             msg_queue: Arc::downgrade(&self.msg_queue),
-            notification_rx: self.notification_rx.clone(),
+            notification_rx: RefCell::new(self.notification_rx.clone()),
         }
     }
 
@@ -52,7 +57,7 @@ impl MessageInbox {
             {
                 let mut msg_queue = self.msg_queue.lock().unwrap();
                 tracing::debug!("Inbox got {msg:?}");
-                msg_queue.push_back((std::time::Instant::now(), msg));
+                msg_queue.push_back((std::time::Instant::now(), Box::new(msg)));
 
                 if let Some(expiration_age) = self.msg_expiration_duration {
                     while let Some((receive_time, _msg)) = msg_queue.get(0) {
@@ -65,16 +70,18 @@ impl MessageInbox {
                 }
             }
             tracing::trace!("Alerting handles of new messages");
-            let _ = self
+            if self
                 .notification_tx
-                .send(HandleNotification::NewMessages)
-                .await;
+                .send(HandleNotification::NewMessages(Instant::now()))
+                .is_err()
+            {
+                break;
+            }
         }
 
         let _ = self
             .notification_tx
-            .send(HandleNotification::ClosedConnection)
-            .await;
+            .send(HandleNotification::ClosedConnection);
         tracing::debug!("Stopping message inbox");
     }
 }
@@ -103,22 +110,27 @@ impl InboxHandle {
             };
 
             if let Some(msg) = msg {
-                break Some(msg);
+                break Some(*msg);
             } else {
                 tracing::trace!("No match, waiting for new messages");
                 let notification = if let Some(timeout_instant) = timeout_instant {
                     let time_left = timeout_instant - std::time::Instant::now();
-                    match tokio::time::timeout(time_left, self.notification_rx.recv()).await {
-                        Ok(res) => res,
-                        Err(_) => break None,
+                    match tokio::time::timeout(
+                        time_left,
+                        self.notification_rx.borrow_mut().changed(),
+                    )
+                    .await
+                    {
+                        Ok(Ok(())) => *self.notification_rx.borrow_mut().borrow_and_update(),
+                        Ok(Err(_)) | Err(_) => break None,
                     }
                 } else {
-                    self.notification_rx.recv_blocking()
+                    *self.notification_rx.borrow_mut().borrow_and_update()
                 };
 
                 match notification {
-                    Ok(HandleNotification::NewMessages) => continue,
-                    Ok(HandleNotification::ClosedConnection) | Err(_) => {
+                    HandleNotification::NewMessages(_) => continue,
+                    HandleNotification::ClosedConnection => {
                         tracing::debug!(
                             "Notification channel from inbox closed, no messages to search"
                         );
@@ -137,8 +149,8 @@ impl InboxHandle {
         if let Some(msg_queue) = self.msg_queue.upgrade() {
             let msg_queue = msg_queue.lock().expect("Mutex locks");
             msg_queue.iter().find_map(|(receive_time, msg)| {
-                if *receive_time >= start_time && matcher(msg) {
-                    Some(msg.clone())
+                if *receive_time >= start_time && matcher(msg.as_ref()) {
+                    Some(*msg.clone())
                 } else {
                     None
                 }

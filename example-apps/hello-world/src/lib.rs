@@ -27,7 +27,7 @@ pub fn setup() -> FnResult<()> {
     );
     text.draw(&mut buffer).unwrap();
     let text_buffer_data = buffer.to_vec();
-    let rows_to_update = (0..=SCREEN_HEIGHT as u8).into_iter().collect();
+    let rows_to_update = (0..SCREEN_HEIGHT as u8).into_iter().collect();
 
     display::write_region(
         (0, 0),

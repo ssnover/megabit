@@ -36,6 +36,19 @@ pub fn with_screen_functions<'a>(
             write_region,
         )
         .with_function(
+            "write_region_rgb",
+            [
+                extism::PTR,
+                extism::PTR,
+                extism::PTR,
+                extism::PTR,
+                extism::PTR,
+            ],
+            [extism::PTR],
+            user_data.clone(),
+            write_region_rgb,
+        )
+        .with_function(
             "render",
             [extism::PTR],
             [extism::PTR],
@@ -84,6 +97,13 @@ extism::host_fn!(pub write_region(user_data: PersistentData; position_x: u32, po
     let data = data.lock().unwrap();
     let mut screen_buffer = data.screen_buffer.borrow_mut();
     display::write_region(&mut screen_buffer, position_x, position_y, width, height, buffer_data)
+});
+
+extism::host_fn!(pub write_region_rgb(user_data: PersistentData; position_x: u32, position_y: u32, width: u32, height: u32, buffer_data: Vec<u8>) {
+    let data = user_data.get()?;
+    let data = data.lock().unwrap();
+    let mut screen_buffer = data.screen_buffer.borrow_mut();
+    display::write_region_rgb(&mut screen_buffer, position_x, position_y, width, height, buffer_data)
 });
 
 extism::host_fn!(pub render(user_data: PersistentData; rows_to_update: Vec<u8>) {

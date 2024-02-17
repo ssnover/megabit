@@ -95,6 +95,21 @@ impl ScreenBuffer {
         Ok(())
     }
 
+    pub fn set_cell_rgb(&mut self, row: usize, col: usize, value: u16) -> io::Result<()> {
+        if row >= self.height || col >= self.width {
+            return Err(io::ErrorKind::InvalidInput.into());
+        }
+
+        let index = row * self.width + col;
+        match &mut self.buffer {
+            ScreenBufferKind::Rgb555(ref mut buffer, _) => {
+                buffer[index] = value;
+                Ok(())
+            }
+            ScreenBufferKind::Monocolor(_) => Err(io::ErrorKind::InvalidData.into()),
+        }
+    }
+
     pub fn get_row(&self, row_number: usize) -> io::Result<Vec<bool>> {
         if row_number >= self.height {
             return Err(io::ErrorKind::InvalidInput.into());
