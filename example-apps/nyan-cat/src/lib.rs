@@ -3,7 +3,6 @@ use extism_pdk::*;
 use megabit_app_sdk::{
     display::{self, render, write_region_rgb, Color, RgbBuffer},
     kv_store,
-    log::*,
 };
 use png::ColorType;
 use std::io::BufReader;
@@ -103,18 +102,6 @@ pub fn run() -> FnResult<()> {
     let mut buf = vec![0; reader.output_buffer_size()];
     let info = reader.next_frame(&mut buf).unwrap();
     let image_bytes = &buf[..info.buffer_size()];
-    log(
-        Level::Info,
-        format!("Size in bytes of frame: {}", image_bytes.len()),
-    );
-    log(
-        Level::Info,
-        format!(
-            "Palette size bytes: {}",
-            reader.info().palette.as_ref().unwrap().len()
-        ),
-    );
-    log(Level::Info, format!("{:?}", reader.info().compression));
     assert!(matches!(info.color_type, ColorType::Indexed));
     assert!(!reader.info().interlaced);
     let palette = reader.info().palette.as_ref().unwrap();

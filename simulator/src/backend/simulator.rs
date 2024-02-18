@@ -129,7 +129,13 @@ async fn handle_serial_message(
                 )
                 .await?;
         }
-        _ => tracing::debug!("Unhandled message received"),
+        SerialMessage::RequestCommitRender(RequestCommitRender {}) => {
+            tracing::error!("Received request to render");
+            to_serial
+                .send(SerialMessage::CommitRenderResponse(CommitRenderResponse {}).to_bytes())
+                .await?;
+        }
+        m => tracing::debug!("Unhandled message received: {}", m.as_ref()),
     }
 
     Ok(())

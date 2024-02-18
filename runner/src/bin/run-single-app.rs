@@ -24,9 +24,8 @@ fn main() -> anyhow::Result<()> {
 
     tracing_subscriber::registry()
         .with(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                "megabit_runner=debug,megabit_runner::wasm_env::host_functions::host=info".into()
-            }),
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "megabit_runner=debug".into()),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
@@ -59,31 +58,33 @@ fn main() -> anyhow::Result<()> {
         display_info,
     )?;
 
-    loop {
-        tracing::info!("Running app: {}", wasm_app.name());
-        wasm_app.setup_app()?;
+    tracing::info!("Running app: {}", wasm_app.name());
+    wasm_app.setup_app()?;
 
-        if let Some(refresh_period) = wasm_app.refresh_period() {
-            loop {
-                let start_time = std::time::Instant::now();
-                tracing::debug!("Running");
-                match wasm_app.run_app_once() {
-                    Ok(()) => {
-                        if start_time.elapsed() < refresh_period {
-                            std::thread::sleep(refresh_period - start_time.elapsed())
-                        }
-                    }
-                    Err(err) => {
-                        tracing::error!(
-                            "Running Wasm app {} failed: {err}, exiting",
-                            wasm_app.name()
-                        );
-                        break;
+    if let Some(refresh_period) = wasm_app.refresh_period() {
+        loop {
+            let start_time = std::time::Instant::now();
+            tracing::debug!("Running");
+            match wasm_app.run_app_once() {
+                Ok(()) => {
+                    let run_time = start_time.elapsed();
+                    tracing::warn!("Running app took {} ms", run_time.as_millis());
+                    if run_time < refresh_period {
+                        std::thread::sleep(refresh_period - start_time.elapsed())
                     }
                 }
+                Err(err) => {
+                    tracing::error!(
+                        "Running Wasm app {} failed: {err}, exiting",
+                        wasm_app.name()
+                    );
+                    break;
+                }
             }
-        } else {
-            if let Ok(()) = wasm_app.run_app_once() {}
         }
+    } else {
+        if let Ok(()) = wasm_app.run_app_once() {}
     }
+
+    Ok(())
 }

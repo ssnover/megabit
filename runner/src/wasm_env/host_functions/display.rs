@@ -44,19 +44,25 @@ pub fn write_region_rgb(
 }
 
 pub fn render(
-    screen_buffer: &ScreenBuffer,
+    screen_buffer: &mut ScreenBuffer,
     serial_conn: SyncSerialConnection,
     rows: Vec<u8>,
 ) -> Result<(), extism::Error> {
     for row_number in rows {
         if screen_buffer.is_rgb() {
-            let row_data = screen_buffer.get_row_rgb(row_number as usize)?;
-            serial_conn.update_row_rgb(row_number, row_data)?;
+            let (row_data, dirty) = screen_buffer.get_row_rgb(row_number as usize)?;
+            if dirty {
+                serial_conn.update_row_rgb(row_number, row_data)?;
+            }
         } else {
-            let row_data = screen_buffer.get_row(row_number as usize)?;
-            serial_conn.update_row(row_number, row_data)?;
+            let (row_data, dirty) = screen_buffer.get_row(row_number as usize)?;
+            if dirty {
+                serial_conn.update_row(row_number, row_data)?;
+            }
         }
     }
+    screen_buffer.clear_dirty_status();
+    serial_conn.commit_render()?;
 
     Ok(())
 }

@@ -16,6 +16,7 @@ pub struct ScreenBuffer {
     buffer: ScreenBufferKind,
     width: usize,
     height: usize,
+    dirty_row_buffer: Vec<bool>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -53,6 +54,7 @@ impl ScreenBuffer {
             },
             width,
             height,
+            dirty_row_buffer: vec![false; height],
         }
     }
 
@@ -85,10 +87,17 @@ impl ScreenBuffer {
         let index = row * self.width + col;
         match &mut self.buffer {
             ScreenBufferKind::Monocolor(ref mut buffer) => {
+                if buffer[index] != value {
+                    self.dirty_row_buffer[row] = true;
+                }
                 buffer[index] = value;
             }
             ScreenBufferKind::Rgb555(ref mut buffer, palette) => {
-                buffer[index] = if value { palette.on } else { palette.off };
+                let value = if value { palette.on } else { palette.off };
+                if buffer[index] != value {
+                    self.dirty_row_buffer[row] = true;
+                }
+                buffer[index] = value;
             }
         }
 
@@ -103,6 +112,9 @@ impl ScreenBuffer {
         let index = row * self.width + col;
         match &mut self.buffer {
             ScreenBufferKind::Rgb555(ref mut buffer, _) => {
+                if buffer[index] != value {
+                    self.dirty_row_buffer[row] = true;
+                }
                 buffer[index] = value;
                 Ok(())
             }
@@ -110,7 +122,7 @@ impl ScreenBuffer {
         }
     }
 
-    pub fn get_row(&self, row_number: usize) -> io::Result<Vec<bool>> {
+    pub fn get_row(&self, row_number: usize) -> io::Result<(Vec<bool>, bool)> {
         if row_number >= self.height {
             return Err(io::ErrorKind::InvalidInput.into());
         }
@@ -119,13 +131,16 @@ impl ScreenBuffer {
             ScreenBufferKind::Monocolor(buffer) => {
                 let start_idx = row_number * self.width;
                 let end_idx = (row_number + 1) * self.width;
-                Ok(Vec::from(&buffer[start_idx..end_idx]))
+                Ok((
+                    Vec::from(&buffer[start_idx..end_idx]),
+                    self.dirty_row_buffer[row_number],
+                ))
             }
             ScreenBufferKind::Rgb555(_, _) => Err(io::ErrorKind::InvalidData.into()),
         }
     }
 
-    pub fn get_row_rgb(&self, row_number: usize) -> io::Result<Vec<u16>> {
+    pub fn get_row_rgb(&self, row_number: usize) -> io::Result<(Vec<u16>, bool)> {
         if row_number >= self.height {
             return Err(io::ErrorKind::InvalidInput.into());
         }
@@ -134,9 +149,18 @@ impl ScreenBuffer {
             ScreenBufferKind::Rgb555(buffer, _) => {
                 let start_idx = row_number * self.width;
                 let end_idx = (row_number + 1) * self.width;
-                Ok(Vec::from(&buffer[start_idx..end_idx]))
+                Ok((
+                    Vec::from(&buffer[start_idx..end_idx]),
+                    self.dirty_row_buffer[row_number],
+                ))
             }
             ScreenBufferKind::Monocolor(_) => Err(io::ErrorKind::InvalidData.into()),
         }
+    }
+
+    pub fn clear_dirty_status(&mut self) {
+        self.dirty_row_buffer
+            .iter_mut()
+            .for_each(|row| *row = false);
     }
 }

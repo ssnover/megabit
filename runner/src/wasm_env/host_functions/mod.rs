@@ -109,9 +109,9 @@ extism::host_fn!(pub write_region_rgb(user_data: PersistentData; position_x: u32
 extism::host_fn!(pub render(user_data: PersistentData; rows_to_update: Vec<u8>) {
     let data = user_data.get()?;
     let data = data.lock().unwrap();
-    let screen_buffer = data.screen_buffer.borrow();
+    let mut screen_buffer = data.screen_buffer.borrow_mut();
     let serial_conn = data.serial_conn.clone();
-    display::render(&screen_buffer, serial_conn, rows_to_update)
+    display::render(&mut screen_buffer, serial_conn, rows_to_update)
 });
 
 extism::host_fn!(pub set_monocolor_palette(user_data: PersistentData; on_color: u32, off_color: u32) {

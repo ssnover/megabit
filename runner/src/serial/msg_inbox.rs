@@ -56,7 +56,7 @@ impl MessageInbox {
             }
             {
                 let mut msg_queue = self.msg_queue.lock().unwrap();
-                tracing::debug!("Inbox got {msg:?}");
+                tracing::debug!("Inbox got {:?}", msg.as_ref());
                 msg_queue.push_back((std::time::Instant::now(), Box::new(msg)));
 
                 if let Some(expiration_age) = self.msg_expiration_duration {

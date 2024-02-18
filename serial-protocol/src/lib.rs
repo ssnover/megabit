@@ -9,6 +9,8 @@ pub enum SerialMessage {
     SetRgbStateResponse(SetRgbStateResponse),
     GetDisplayInfo(GetDisplayInfo),
     GetDisplayInfoResponse(GetDisplayInfoResponse),
+    RequestCommitRender(RequestCommitRender),
+    CommitRenderResponse(CommitRenderResponse),
     ReportButtonPress,
     UpdateRow(UpdateRow),
     UpdateRowResponse(UpdateRowResponse),
@@ -50,6 +52,16 @@ impl SerialMessage {
             SerialMessage::GetDisplayInfoResponse(inner) => {
                 out.push(0xa0);
                 out.push(0x05);
+                out.append(&mut inner.to_bytes())
+            }
+            SerialMessage::RequestCommitRender(inner) => {
+                out.push(0xa0);
+                out.push(0x06);
+                out.append(&mut inner.to_bytes())
+            }
+            SerialMessage::CommitRenderResponse(inner) => {
+                out.push(0xa0);
+                out.push(0x07);
                 out.append(&mut inner.to_bytes())
             }
             SerialMessage::SetLedState(inner) => {
@@ -109,6 +121,12 @@ impl SerialMessage {
                 )),
                 (0xa0, 0x05) => Ok(SerialMessage::GetDisplayInfoResponse(
                     GetDisplayInfoResponse::try_from_bytes(&data[2..])?,
+                )),
+                (0xa0, 0x06) => Ok(SerialMessage::RequestCommitRender(
+                    RequestCommitRender::try_from_bytes(&data[2..])?,
+                )),
+                (0xa0, 0x07) => Ok(SerialMessage::CommitRenderResponse(
+                    CommitRenderResponse::try_from_bytes(&data[2..])?,
                 )),
                 (0xde, 0x00) => Ok(SerialMessage::SetLedState(SetLedState::try_from_bytes(
                     &data[2..],
@@ -448,6 +466,40 @@ impl GetDisplayInfoResponse {
                 height: u32::from_be_bytes(data[4..8].try_into().unwrap()),
                 pixel_representation: PixelRepresentation::try_from_byte(data[8])?,
             })
+        } else {
+            Err(io::ErrorKind::InvalidData.into())
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct RequestCommitRender {}
+
+impl RequestCommitRender {
+    pub fn to_bytes(self) -> Vec<u8> {
+        vec![]
+    }
+
+    pub fn try_from_bytes(data: &[u8]) -> io::Result<Self> {
+        if data.is_empty() {
+            Ok(RequestCommitRender {})
+        } else {
+            Err(io::ErrorKind::InvalidData.into())
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CommitRenderResponse {}
+
+impl CommitRenderResponse {
+    pub fn to_bytes(self) -> Vec<u8> {
+        vec![]
+    }
+
+    pub fn try_from_bytes(data: &[u8]) -> io::Result<Self> {
+        if data.is_empty() {
+            Ok(CommitRenderResponse {})
         } else {
             Err(io::ErrorKind::InvalidData.into())
         }

@@ -38,23 +38,12 @@ impl SerialListener {
     }
 
     async fn handle_incoming_serial_bytes(mut reader: ReadHalf<'_>, to_simulator: Sender<Vec<u8>>) {
-        // Alright, this function is a bit of a doozy. The chief problem is that tokio Files lock
-        // in order to read or write because Linux has no means of polling them for new data.
-        // This means we must time out the read periodically or else it will grab the lock and
-        // prevent the other task from writing data. Additionally, I've added a small delay at the
-        // end of the loop to give the write context a little bit of extra time to grab and write.
-        // When the write task gets starved, weird things happen. In particular, despite it being
-        // a pseudoterminal, I've observed written data being read out (as if it was echoed from
-        // the other side). My goal here is principally to prevent this task from starving the
-        // other one.
         let mut incoming_buffer = Vec::with_capacity(4096);
         loop {
-            if let Err(err) = reader.read_buf(&mut incoming_buffer).await {
-                tracing::error!("Error reading from the pty: {err}");
-            }
-
             if incoming_buffer.len() >= 3 {
-                tracing::trace!("Got data");
+                if incoming_buffer.len() < 10 {
+                    tracing::debug!("Got data: {:?}", &incoming_buffer[..]);
+                }
                 if let Ok(decoded_data) = cobs::decode_vec(&incoming_buffer[..]) {
                     tracing::debug!(
                         "Decoded a payload of {} bytes from buffer of {} bytes",
@@ -72,6 +61,10 @@ impl SerialListener {
                         .expect("Need a terminator to have a valid COBS encoded payload");
                     incoming_buffer =
                         Vec::from_iter(incoming_buffer.into_iter().skip(encoded_len + 1));
+                }
+            } else {
+                if let Err(err) = reader.read_buf(&mut incoming_buffer).await {
+                    tracing::error!("Error reading from the pty: {err}");
                 }
             }
         }

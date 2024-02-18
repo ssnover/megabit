@@ -206,6 +206,22 @@ impl SerialConnection {
             None => Err(io::ErrorKind::ConnectionAborted.into()),
         }
     }
+
+    pub async fn commit_render(&self) -> io::Result<CommitRenderResponse> {
+        self.send_message(SerialMessage::RequestCommitRender(RequestCommitRender {}))
+            .await?;
+        let msg = self
+            .wait_for_message(
+                Box::new(|msg| matches!(msg, &SerialMessage::CommitRenderResponse(_))),
+                None,
+            )
+            .await;
+        match msg {
+            Some(SerialMessage::CommitRenderResponse(response)) => Ok(response),
+            Some(_) => unreachable!(),
+            None => Err(io::ErrorKind::ConnectionAborted.into()),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -264,6 +280,10 @@ impl SyncSerialConnection {
         self.rt
             .block_on(async { self.inner.get_display_info().await })
     }
+
+    pub fn commit_render(&self) -> io::Result<CommitRenderResponse> {
+        self.rt.block_on(async { self.inner.commit_render().await })
+    }
 }
 
 async fn serial_task(
@@ -311,7 +331,7 @@ async fn handle_requests(
     while let Ok(msg) = request_rx.recv().await {
         match msg {
             SerialTaskRequest::SendMessage { msg, response } => {
-                tracing::debug!("Send message: {}", msg.as_ref());
+                tracing::trace!("Send message: {}", msg.as_ref());
                 let payload = msg.to_bytes();
                 let mut payload = cobs::encode_vec(&payload[..]);
                 payload.push(0x00);
@@ -329,34 +349,37 @@ async fn handle_serial_msgs(
 ) -> anyhow::Result<()> {
     let mut incoming_serial_buffer = Vec::with_capacity(1024);
     loop {
-        match serial_rx.read_buf(&mut incoming_serial_buffer).await {
-            Ok(n) => {
-                tracing::trace!("Received {n} bytes from the serial port");
-                if let Ok(decoded_data) = cobs::decode_vec(&incoming_serial_buffer[..]) {
-                    tracing::trace!(
-                        "Decoded a payload of {} bytes from buffer of {} bytes",
-                        decoded_data.len(),
-                        incoming_serial_buffer.len()
-                    );
-                    if let Ok(msg) = SerialMessage::try_from_bytes(&decoded_data[..]) {
-                        tracing::trace!("Decoded a message: {msg:?}");
-                        if let Err(err) = incoming_msg_tx.send(msg).await {
-                            tracing::error!("Failed to forward deserialized device message: {err}");
-                            return Err(err.into());
-                        }
+        if incoming_serial_buffer.len() >= 3 {
+            if let Ok(decoded_data) = cobs::decode_vec(&incoming_serial_buffer[..]) {
+                tracing::trace!(
+                    "Decoded a payload of {} bytes from buffer of {} bytes",
+                    decoded_data.len(),
+                    incoming_serial_buffer.len()
+                );
+                if let Ok(msg) = SerialMessage::try_from_bytes(&decoded_data[..]) {
+                    tracing::trace!("Decoded a message: {msg:?}");
+                    if let Err(err) = incoming_msg_tx.send(msg).await {
+                        tracing::error!("Failed to forward deserialized device message: {err}");
+                        return Err(err.into());
                     }
-                    let (encoded_len, _) = incoming_serial_buffer
-                        .iter()
-                        .enumerate()
-                        .find(|(_idx, elem)| **elem == 0x00)
-                        .expect("Need a terminator to have a valid COBS payload");
-                    incoming_serial_buffer =
-                        Vec::from_iter(incoming_serial_buffer.into_iter().skip(encoded_len + 1));
                 }
+                let (encoded_len, _) = incoming_serial_buffer
+                    .iter()
+                    .enumerate()
+                    .find(|(_idx, elem)| **elem == 0x00)
+                    .expect("Need a terminator to have a valid COBS payload");
+                incoming_serial_buffer =
+                    Vec::from_iter(incoming_serial_buffer.into_iter().skip(encoded_len + 1));
             }
-            Err(err) => {
-                tracing::error!("Failed to read data from the serial port: {err}");
-                return Err(err.into());
+        } else {
+            match serial_rx.read_buf(&mut incoming_serial_buffer).await {
+                Ok(n) => {
+                    tracing::trace!("Received {n} bytes from the serial port");
+                }
+                Err(err) => {
+                    tracing::error!("Failed to read data from the serial port: {err}");
+                    return Err(err.into());
+                }
             }
         }
     }
