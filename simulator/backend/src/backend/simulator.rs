@@ -1,7 +1,7 @@
 use super::DisplayConfiguration;
-use crate::messages::{SetDebugLed, SetMatrixRow, SetMatrixRowRgb, SetRgbLed, SimMessage};
 use async_channel::{Receiver, Sender};
 use megabit_serial_protocol::*;
+use megabit_sim_msgs::{SetDebugLed, SetMatrixRow, SetMatrixRowRgb, SetRgbLed, SimMessage};
 use std::convert::AsRef;
 
 pub async fn run(

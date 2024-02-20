@@ -1,4 +1,4 @@
-use crate::messages::{SetDebugLed, SetMatrixRow, SetMatrixRowRgb, SetRgbLed, SimMessage};
+use megabit_sim_msgs::{SetDebugLed, SetMatrixRow, SetMatrixRowRgb, SetRgbLed, SimMessage};
 use futures::{SinkExt, StreamExt};
 use gloo::{
     net::websocket::{futures::WebSocket, Message},
