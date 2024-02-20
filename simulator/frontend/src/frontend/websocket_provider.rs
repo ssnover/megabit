@@ -1,9 +1,9 @@
-use megabit_sim_msgs::{SetDebugLed, SetMatrixRow, SetMatrixRowRgb, SetRgbLed, SimMessage};
 use futures::{SinkExt, StreamExt};
 use gloo::{
     net::websocket::{futures::WebSocket, Message},
     utils::window,
 };
+use megabit_sim_msgs::{SetDebugLed, SetMatrixRow, SetMatrixRowRgb, SetRgbLed, SimMessage};
 use std::{cell::RefCell, rc::Rc, time::Duration};
 use wasm_bindgen_futures::spawn_local;
 use yew::{platform::time::sleep, prelude::*};
@@ -42,6 +42,7 @@ pub fn WebsocketProvider(props: &WebsocketProviderProps) -> Html {
         let is_rgb_display_setter = props.is_rgb_display_setter.clone();
         let update_cb = props.update_row_cb.clone();
         let update_rgb_cb = props.update_row_rgb_cb.clone();
+        let commit_cb = props.commit_render_cb.clone();
         let connection = connection.clone();
         move |()| {
             spawn_local(async move {
@@ -61,18 +62,18 @@ pub fn WebsocketProvider(props: &WebsocketProviderProps) -> Html {
                     let mut reader = connection.1.try_borrow_mut().unwrap();
                     if let Some(Ok(msg)) = reader.next().await {
                         match msg {
-                            Message::Text(msg) => {
-                                log::debug!("Got message: {msg}");
+                            Message::Bytes(msg) => {
                                 handle_simulator_message(
-                                    msg,
+                                    &msg[..],
                                     &led_state_setter,
                                     &rgb_state_setter,
                                     &is_rgb_display_setter,
                                     &update_cb,
                                     &update_rgb_cb,
+                                    &commit_cb,
                                 );
                             }
-                            _ => log::info!("Got bytes"),
+                            _ => log::debug!("Got bytes"),
                         }
                     }
                     sleep(Duration::from_millis(30)).await;
@@ -113,6 +114,7 @@ pub struct WebsocketProviderProps {
     pub is_rgb_display_setter: UseStateSetter<bool>,
     pub update_row_cb: Callback<(u8, Vec<bool>)>,
     pub update_row_rgb_cb: Callback<(u8, Vec<u16>)>,
+    pub commit_render_cb: Callback<()>,
     pub children: Children,
 }
 
@@ -122,15 +124,17 @@ pub fn use_websocket() -> WebsocketHandle {
 }
 
 fn handle_simulator_message(
-    msg: String,
+    msg: &[u8],
     led_state_setter: &UseStateSetter<bool>,
     rgb_state_setter: &UseStateSetter<(u8, u8, u8)>,
     is_rgb_display_setter: &UseStateSetter<bool>,
     update_cb: &Callback<(u8, Vec<bool>)>,
     update_row_rgb_cb: &Callback<(u8, Vec<u16>)>,
+    commit_cb: &Callback<()>,
 ) {
-    if let Ok(msg) = serde_json::from_str::<SimMessage>(&msg) {
+    if let Ok(msg) = rmp_serde::from_slice(msg) {
         match msg {
+            SimMessage::CommitRender => commit_cb.emit(()),
             SimMessage::SetDebugLed(SetDebugLed { new_state }) => led_state_setter.set(new_state),
             SimMessage::SetRgbLed(SetRgbLed { r, g, b }) => rgb_state_setter.set((r, g, b)),
             SimMessage::SetMatrixRow(SetMatrixRow { row, data }) => {
@@ -143,6 +147,6 @@ fn handle_simulator_message(
             _ => log::warn!("Unhandled sim message: {msg:?}"),
         }
     } else {
-        log::error!("Failed to parse sim message: {msg}")
+        log::error!("Failed to parse sim message: {msg:?}")
     }
 }

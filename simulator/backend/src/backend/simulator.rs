@@ -5,9 +5,9 @@ use megabit_sim_msgs::{SetDebugLed, SetMatrixRow, SetMatrixRowRgb, SetRgbLed, Si
 use std::convert::AsRef;
 
 pub async fn run(
-    from_ws: Receiver<String>,
+    from_ws: Receiver<Vec<u8>>,
     from_serial: Receiver<Vec<u8>>,
-    to_ws: Sender<String>,
+    to_ws: Sender<Vec<u8>>,
     to_serial: Sender<Vec<u8>>,
     display_cfg: DisplayConfiguration,
 ) {
@@ -23,7 +23,7 @@ pub async fn run(
 
 async fn handle_serial_packets(
     from_serial: Receiver<Vec<u8>>,
-    to_ws: Sender<String>,
+    to_ws: Sender<Vec<u8>>,
     to_serial: Sender<Vec<u8>>,
     display_cfg: DisplayConfiguration,
 ) {
@@ -51,7 +51,7 @@ async fn handle_serial_packets(
 
 async fn handle_serial_message(
     to_serial: &Sender<Vec<u8>>,
-    to_ws: &Sender<String>,
+    to_ws: &Sender<Vec<u8>>,
     display_cfg: &DisplayConfiguration,
     msg: SerialMessage,
 ) -> anyhow::Result<()> {
@@ -80,7 +80,7 @@ async fn handle_serial_message(
         }) => {
             to_ws
                 .send(
-                    serde_json::to_string(&SimMessage::SetMatrixRowRgb(SetMatrixRowRgb {
+                    rmp_serde::to_vec(&SimMessage::SetMatrixRowRgb(SetMatrixRowRgb {
                         row: row_number as usize,
                         data: row_data,
                     }))
@@ -102,8 +102,7 @@ async fn handle_serial_message(
                 .await?
         }
         SerialMessage::SetLedState(SetLedState { new_state }) => {
-            if let Ok(msg) =
-                serde_json::to_string(&SimMessage::SetDebugLed(SetDebugLed { new_state }))
+            if let Ok(msg) = rmp_serde::to_vec(&SimMessage::SetDebugLed(SetDebugLed { new_state }))
             {
                 let _ = to_ws.send(msg).await;
             }
@@ -117,7 +116,7 @@ async fn handle_serial_message(
                 .await?;
         }
         SerialMessage::SetRgbState(SetRgbState { r, g, b }) => {
-            if let Ok(msg) = serde_json::to_string(&SimMessage::SetRgbLed(SetRgbLed { r, g, b })) {
+            if let Ok(msg) = rmp_serde::to_vec(&SimMessage::SetRgbLed(SetRgbLed { r, g, b })) {
                 let _ = to_ws.send(msg).await;
             }
             to_serial
@@ -130,7 +129,12 @@ async fn handle_serial_message(
                 .await?;
         }
         SerialMessage::RequestCommitRender(RequestCommitRender {}) => {
-            tracing::error!("Received request to render");
+            let _ = to_ws
+                .send(rmp_serde::to_vec(&SimMessage::RequestRgb).unwrap())
+                .await;
+            if let Ok(msg) = rmp_serde::to_vec(&SimMessage::CommitRender) {
+                let _ = to_ws.send(msg).await;
+            }
             to_serial
                 .send(SerialMessage::CommitRenderResponse(CommitRenderResponse {}).to_bytes())
                 .await?;
@@ -142,7 +146,7 @@ async fn handle_serial_message(
 }
 
 async fn handle_update_row(
-    to_ws: &Sender<String>,
+    to_ws: &Sender<Vec<u8>>,
     display_cfg: &DisplayConfiguration,
     row_number: u8,
     row_data_len: u8,
@@ -162,7 +166,7 @@ async fn handle_update_row(
         if display_cfg.is_rgb {
             Status::Failure
         } else {
-            if let Ok(msg) = serde_json::to_string(&SimMessage::SetMatrixRow(SetMatrixRow {
+            if let Ok(msg) = rmp_serde::to_vec(&SimMessage::SetMatrixRow(SetMatrixRow {
                 row: usize::from(row_number),
                 data: pixel_states,
             })) {
@@ -179,13 +183,13 @@ async fn handle_update_row(
 }
 
 async fn handle_ws_message(
-    from_ws: Receiver<String>,
+    from_ws: Receiver<Vec<u8>>,
     to_serial: Sender<Vec<u8>>,
-    to_ws: Sender<String>,
+    to_ws: Sender<Vec<u8>>,
     display_cfg: &DisplayConfiguration,
 ) {
-    while let Ok(msg_str) = from_ws.recv().await {
-        if let Ok(msg) = serde_json::from_str::<SimMessage>(&msg_str) {
+    while let Ok(msg) = from_ws.recv().await {
+        if let Ok(msg) = rmp_serde::from_slice::<SimMessage>(&msg) {
             match msg {
                 SimMessage::ReportButtonPress => {
                     tracing::info!("Sending button press notification");
@@ -198,13 +202,13 @@ async fn handle_ws_message(
                     tracing::debug!("Got message indicating that the frontend is started");
                     if display_cfg.is_rgb {
                         to_ws
-                            .send(serde_json::to_string(&SimMessage::RequestRgb).unwrap())
+                            .send(rmp_serde::to_vec(&SimMessage::RequestRgb).unwrap())
                             .await
                             .unwrap();
                     }
                 }
                 _ => {
-                    tracing::warn!("Got unexpected message from the frontend: {msg_str}");
+                    tracing::warn!("Got unexpected message from the frontend: {msg:?}");
                 }
             }
         }

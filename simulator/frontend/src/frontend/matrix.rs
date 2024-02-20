@@ -55,17 +55,15 @@ pub fn canvas(props: &CanvasProperties) -> Html {
 #[derive(Properties, PartialEq)]
 pub struct CanvasProperties {
     pub renderer: Callback<HtmlCanvasElement>,
-    pub counter: UseStateHandle<u64>,
     pub matrix_buffer: UseStateHandle<core::cell::RefCell<simple_display::MatrixBuffer>>,
     pub rgb_matrix_buffer: UseStateHandle<core::cell::RefCell<rgb_display::MatrixBuffer>>,
 }
 
 pub mod simple_display {
+    use super::get_2d_canvas;
     use core::cell::RefCell;
     use wasm_bindgen::JsValue;
     use web_sys::HtmlCanvasElement;
-
-    use super::get_2d_canvas;
 
     pub const PIXELS_PER_CELL: u32 = 16;
     pub const COLUMNS: u32 = 32;
@@ -126,6 +124,7 @@ pub mod rgb_display {
     pub type MatrixBuffer = Vec<u16>;
 
     pub fn draw(canvas: HtmlCanvasElement, matrix_buffer: &RefCell<MatrixBuffer>) {
+        static mut COUNTER: u64 = 0u64;
         let interface = get_2d_canvas(&canvas);
 
         let matrix_buffer = matrix_buffer.borrow();
@@ -149,6 +148,10 @@ pub mod rgb_display {
                 );
             }
         }
+        unsafe {
+            log::info!("Draw: {COUNTER}");
+            COUNTER = COUNTER.wrapping_add(1);
+        }
     }
 
     pub fn update_row(row_number: u8, data: Vec<u16>, matrix_buffer: &RefCell<MatrixBuffer>) {
@@ -160,6 +163,12 @@ pub mod rgb_display {
             .for_each(|(elem, new_color)| {
                 *elem = new_color;
             });
+    }
+
+    pub fn update_whole(lhs: &RefCell<MatrixBuffer>, rhs: &RefCell<MatrixBuffer>) {
+        let mut matrix_buffer = lhs.borrow_mut();
+        let other = rhs.borrow();
+        matrix_buffer.copy_from_slice(other.as_slice());
     }
 }
 

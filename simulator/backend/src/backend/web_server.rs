@@ -20,15 +20,16 @@ use tower_http::{
 
 #[derive(Clone)]
 struct AppState {
-    to_ws_handler: Receiver<String>,
-    from_ws_handler: Sender<String>,
+    to_ws_handler: Receiver<Vec<u8>>,
+    from_ws_handler: Sender<Vec<u8>>,
 }
 
-pub async fn serve(port: u16, to_ws_rx: Receiver<String>, from_ws_tx: Sender<String>) {
+pub async fn serve(port: u16, to_ws_rx: Receiver<Vec<u8>>, from_ws_tx: Sender<Vec<u8>>) {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     tracing::debug!("listening on {}", listener.local_addr().unwrap());
-    let dist_path: String = std::env::var("SIM_DIST_DIR").unwrap_or("./simulator/dist".to_string());
+    let dist_path: String =
+        std::env::var("SIM_DIST_DIR").unwrap_or("./simulator/frontend/dist".to_string());
     let state = AppState {
         to_ws_handler: to_ws_rx,
         from_ws_handler: from_ws_tx,
@@ -64,8 +65,8 @@ async fn ws_handler(
 async fn handle_socket(
     mut socket: WebSocket,
     peer: SocketAddr,
-    to_ws_rx: Receiver<String>,
-    from_ws_tx: Sender<String>,
+    to_ws_rx: Receiver<Vec<u8>>,
+    from_ws_tx: Sender<Vec<u8>>,
 ) {
     if socket.send(Message::Ping(vec![1, 2, 3])).await.is_ok() {
         tracing::info!("Pinged {peer}...");
@@ -84,7 +85,7 @@ async fn handle_socket(
 
 async fn handle_incoming_ws_message(
     mut receiver: SplitStream<WebSocket>,
-    from_ws_tx: Sender<String>,
+    from_ws_tx: Sender<Vec<u8>>,
     peer: SocketAddr,
 ) {
     while let Some(msg) = receiver.next().await {
@@ -101,10 +102,10 @@ async fn handle_incoming_ws_message(
 
 async fn handle_outgoing_payloads(
     mut sender: SplitSink<WebSocket, Message>,
-    to_ws_rx: Receiver<String>,
+    to_ws_rx: Receiver<Vec<u8>>,
 ) {
-    while let Ok(msg_str) = to_ws_rx.recv().await {
-        if let Err(err) = sender.send(Message::Text(msg_str)).await {
+    while let Ok(msg) = to_ws_rx.recv().await {
+        if let Err(err) = sender.send(Message::Binary(msg)).await {
             tracing::error!("Unable to send message to web client: {err}");
             break;
         }
@@ -113,19 +114,19 @@ async fn handle_outgoing_payloads(
 
 async fn process_message(
     msg: Message,
-    from_ws_tx: &Sender<String>,
+    from_ws_tx: &Sender<Vec<u8>>,
     peer: SocketAddr,
 ) -> ControlFlow<(), ()> {
     match msg {
-        Message::Text(t) => {
-            tracing::info!(">>> {peer} sent str: {t}");
-            if from_ws_tx.send(t).await.is_err() {
+        Message::Binary(data) => {
+            tracing::info!(">>> {peer} sent {} bytes: {data:?}", data.len());
+            if from_ws_tx.send(data).await.is_err() {
                 tracing::warn!("Receiver hung up, exiting");
                 return ControlFlow::Break(());
             }
         }
-        Message::Binary(data) => {
-            tracing::info!(">>> {peer} sent {} bytes: {data:?}", data.len());
+        Message::Text(text) => {
+            tracing::info!(">>> {peer} sent text {text}");
         }
         Message::Close(c) => {
             if let Some(CloseFrame { code, reason }) = c {

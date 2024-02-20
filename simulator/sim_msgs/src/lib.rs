@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
-#[serde(tag = "msg", content = "data")]
 pub enum SimMessage {
+    CommitRender,
     FrontendStarted,
     SetDebugLed(SetDebugLed),
     SetRgbLed(SetRgbLed),

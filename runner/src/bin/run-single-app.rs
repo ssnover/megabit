@@ -25,7 +25,7 @@ fn main() -> anyhow::Result<()> {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "megabit_runner=debug".into()),
+                .unwrap_or_else(|_| "run_single_app=info,megabit_runner=debug".into()),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
@@ -68,7 +68,7 @@ fn main() -> anyhow::Result<()> {
             match wasm_app.run_app_once() {
                 Ok(()) => {
                     let run_time = start_time.elapsed();
-                    tracing::warn!("Running app took {} ms", run_time.as_millis());
+                    tracing::warn!("Running app took {} us", run_time.as_micros());
                     if run_time < refresh_period {
                         std::thread::sleep(refresh_period - start_time.elapsed())
                     }
