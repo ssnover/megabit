@@ -1,4 +1,5 @@
-use crate::{frontend::websocket_provider::use_websocket, messages::SimMessage};
+use crate::frontend::websocket_provider::use_websocket;
+use megabit_sim_msgs::SimMessage;
 use yew::prelude::*;
 
 #[function_component(UserButton)]

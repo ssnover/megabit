@@ -1,4 +1,4 @@
 [workspace]
-members = ["runner", "serial-protocol", "simulator"]
+members = ["runner", "serial-protocol", "simulator/backend", "simulator/sim_msgs"]
 resolver = "2"
-exclude = ["app-sdk", "coproc-embassy", "example-apps"]
+exclude = ["app-sdk", "coproc-embassy", "example-apps", "simulator/frontend"]

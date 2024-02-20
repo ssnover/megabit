@@ -82,11 +82,6 @@ mod vars {
 #[plugin_fn]
 pub fn setup() -> FnResult<()> {
     let display_cfg = display::get_display_info()?;
-
-    if display_cfg.is_rgb {
-        display::set_monocolor_palette(Color::GREEN, Color::BLACK).unwrap();
-    }
-
     kv_store::write(vars::FRAME_NUMBER, 0)?;
 
     Ok(())
