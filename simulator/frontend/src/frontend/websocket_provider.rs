@@ -10,11 +10,11 @@ use yew::{platform::time::sleep, prelude::*};
 
 #[derive(Clone, PartialEq)]
 pub struct WebsocketHandle {
-    send_message: Callback<String>,
+    send_message: Callback<Vec<u8>>,
 }
 
 impl WebsocketHandle {
-    pub fn send_message(&self, msg: String) {
+    pub fn send_message(&self, msg: Vec<u8>) {
         self.send_message.emit(msg);
     }
 }
@@ -50,8 +50,8 @@ pub fn WebsocketProvider(props: &WebsocketProviderProps) -> Html {
                     .0
                     .try_borrow_mut()
                     .unwrap()
-                    .send(Message::Text(
-                        serde_json::to_string(&SimMessage::FrontendStarted).unwrap(),
+                    .send(Message::Bytes(
+                        rmp_serde::to_vec(&SimMessage::FrontendStarted).unwrap(),
                     ))
                     .await
                 {
@@ -84,14 +84,14 @@ pub fn WebsocketProvider(props: &WebsocketProviderProps) -> Html {
 
     let send_message = {
         let connection = connection.clone();
-        move |msg: String| {
+        move |msg: Vec<u8>| {
             let connection = connection.clone();
             spawn_local(async move {
                 if let Err(err) = connection
                     .0
                     .try_borrow_mut()
                     .unwrap()
-                    .send(Message::Text(msg))
+                    .send(Message::Bytes(msg))
                     .await
                 {
                     log::error!("Failed to send ws message: {err}");

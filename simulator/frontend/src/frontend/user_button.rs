@@ -10,12 +10,12 @@ pub fn user_button(_props: &UserButtonProperties) -> Html {
     let on_press = {
         let ws = ws.clone();
         Callback::from(move |_| {
-            ws.send_message(serde_json::to_string(&SimMessage::ReportButtonPress).unwrap())
+            ws.send_message(rmp_serde::to_vec(&SimMessage::ReportButtonPress).unwrap())
         })
     };
 
     html! {
-        <div>
+        <div style="margin: 10px">
             <button
                 ref={node_ref}
                 onclick={on_press}

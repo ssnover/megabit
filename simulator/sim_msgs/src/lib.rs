@@ -10,6 +10,8 @@ pub enum SimMessage {
     SetMatrixRow(SetMatrixRow),
     SetMatrixRowRgb(SetMatrixRowRgb),
     RequestRgb,
+    StartRecording,
+    StopRecording,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

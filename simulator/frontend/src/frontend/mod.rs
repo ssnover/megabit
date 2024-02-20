@@ -5,6 +5,8 @@ mod debug_led;
 use debug_led::DebugLed;
 mod matrix;
 use matrix::Canvas;
+mod recording_buttons;
+use recording_buttons::{StartRecording, StopRecording};
 mod rgb_led;
 use rgb_led::RgbLed;
 mod user_button;
@@ -86,9 +88,15 @@ pub fn app() -> Html {
     html! {
         <WebsocketProvider set_led_state={led_state_setter} set_rgb_state={rgb_state_setter} {update_row_cb} {update_row_rgb_cb} {is_rgb_display_setter} {commit_render_cb}>
             <h1>{ "Megabit Coproc Simulator" }</h1>
-            <UserButton/>
-            <DebugLed {led_state} />
-            <RgbLed {rgb_state} />
+            <div style="display:flex;">
+                <UserButton/>
+                <StartRecording/>
+                <StopRecording/>
+            </div>
+            <div style="display:flex">
+                <DebugLed {led_state} />
+                <RgbLed {rgb_state} />
+            </div>
             <Canvas renderer={renderer_cb} {matrix_buffer} {rgb_matrix_buffer} />
         </WebsocketProvider>
     }

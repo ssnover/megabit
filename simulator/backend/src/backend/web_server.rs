@@ -119,14 +119,14 @@ async fn process_message(
 ) -> ControlFlow<(), ()> {
     match msg {
         Message::Binary(data) => {
-            tracing::info!(">>> {peer} sent {} bytes: {data:?}", data.len());
+            tracing::debug!(">>> {peer} sent {} bytes: {data:?}", data.len());
             if from_ws_tx.send(data).await.is_err() {
                 tracing::warn!("Receiver hung up, exiting");
                 return ControlFlow::Break(());
             }
         }
         Message::Text(text) => {
-            tracing::info!(">>> {peer} sent text {text}");
+            tracing::debug!(">>> {peer} sent text {text}");
         }
         Message::Close(c) => {
             if let Some(CloseFrame { code, reason }) = c {

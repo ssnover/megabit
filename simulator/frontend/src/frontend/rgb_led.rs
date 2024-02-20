@@ -3,13 +3,19 @@ use yew::prelude::*;
 #[function_component(RgbLed)]
 pub fn rgb_led(props: &RgbLedProperties) -> Html {
     let node_ref = NodeRef::default();
+    let bg_color = hex_code_from_rgb(*props.rgb_state);
+    let text_color = hex_code_from_rgb((
+        255 - props.rgb_state.0,
+        255 - props.rgb_state.1,
+        255 - props.rgb_state.2,
+    ));
 
     html! {
         <div
-            style={ format!("background-color: {}", hex_code_from_rgb(*props.rgb_state)) }
+            style={ format!("background-color: {bg_color}; margin: 10px; border-radius: 15px") }
             ref={node_ref}
         >
-            <p>{ "STATUS LED" }</p>
+            <p style={ format!("color: {text_color}")}>{ "STATUS LED" }</p>
         </div>
     }
 }
