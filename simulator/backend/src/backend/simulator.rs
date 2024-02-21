@@ -178,7 +178,12 @@ async fn handle_serial_message(
                 tracing::error!("Tried to capture frame on render: {err}");
             }
             to_serial
-                .send(SerialMessage::CommitRenderResponse(CommitRenderResponse {}).to_bytes())
+                .send(
+                    SerialMessage::CommitRenderResponse(CommitRenderResponse {
+                        status: Status::Success,
+                    })
+                    .to_bytes(),
+                )
                 .await?;
         }
         m => tracing::debug!("Unhandled message received: {}", m.as_ref()),

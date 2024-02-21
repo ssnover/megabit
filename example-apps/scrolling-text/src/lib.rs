@@ -45,7 +45,7 @@ pub fn run() -> FnResult<()> {
     let text_width = FONT.character_size.width * TEXT.len() as u32
         + FONT.character_spacing * (TEXT.len() as u32 - 1);
     let max_offset = text_width + FONT.character_size.width;
-    x_offset += 8;
+    x_offset += 6;
     if x_offset >= max_offset as i32 {
         x_offset = -initial_offset;
     }

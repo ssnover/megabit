@@ -490,7 +490,9 @@ impl RequestCommitRender {
 }
 
 #[derive(Debug, Clone)]
-pub struct CommitRenderResponse {}
+pub struct CommitRenderResponse {
+    pub status: Status,
+}
 
 impl CommitRenderResponse {
     pub fn to_bytes(self) -> Vec<u8> {
@@ -498,8 +500,10 @@ impl CommitRenderResponse {
     }
 
     pub fn try_from_bytes(data: &[u8]) -> io::Result<Self> {
-        if data.is_empty() {
-            Ok(CommitRenderResponse {})
+        if data.len() == 1 {
+            Ok(CommitRenderResponse {
+                status: Status::try_from(data[0])?,
+            })
         } else {
             Err(io::ErrorKind::InvalidData.into())
         }
