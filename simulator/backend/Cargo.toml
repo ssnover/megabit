@@ -11,6 +11,7 @@ axum-extra = { version = "0.9.1", features = ["typed-header"] }
 clap = { version = "4.4", features = ["derive"] }
 cobs = { version = "0.2" }
 futures-util = { version = "0.3" }
+gif = "0.13"
 megabit-serial-protocol = { path = "../../serial-protocol" }
 megabit-sim-msgs = { path = "../sim_msgs" }
 nix = { version = "0.27", features = ["term"] }
@@ -22,3 +23,4 @@ tower = { version = "0.4", features = ["util"] }
 tower-http = { version = "0.5.0", features = ["fs", "trace"] }
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1.7", features = ["v4"] }

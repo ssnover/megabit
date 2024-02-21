@@ -1,8 +1,15 @@
+use crate::backend::recorder::start_recorder;
+
 use super::DisplayConfiguration;
+use super::{display_buffer::DisplayBuffer, recorder::RecorderClient};
 use async_channel::{Receiver, Sender};
 use megabit_serial_protocol::*;
 use megabit_sim_msgs::{SetDebugLed, SetMatrixRow, SetMatrixRowRgb, SetRgbLed, SimMessage};
-use std::convert::AsRef;
+use std::time::Duration;
+use std::{
+    convert::AsRef,
+    sync::{Arc, Mutex},
+};
 
 pub async fn run(
     from_ws: Receiver<Vec<u8>>,
@@ -11,11 +18,17 @@ pub async fn run(
     to_serial: Sender<Vec<u8>>,
     display_cfg: DisplayConfiguration,
 ) {
+    let display_buffer = Arc::new(Mutex::new(DisplayBuffer::new(
+        display_cfg.width as usize,
+        display_cfg.height as usize,
+    )));
+    let recorder = start_recorder(display_buffer.clone());
+
     tokio::select! {
-        _ = handle_serial_packets(from_serial, to_ws.clone(), to_serial.clone(), display_cfg) => {
+        _ = handle_serial_packets(from_serial, to_ws.clone(), to_serial.clone(), display_cfg, display_buffer.clone(), recorder.clone()) => {
             tracing::info!("Serial handler exited");
         },
-        _ = handle_ws_message(from_ws, to_serial, to_ws, &display_cfg) => {
+        _ = handle_ws_message(from_ws, to_serial, to_ws, &display_cfg, recorder) => {
             tracing::info!("Websocket message handler exited");
         }
     }
@@ -26,10 +39,21 @@ async fn handle_serial_packets(
     to_ws: Sender<Vec<u8>>,
     to_serial: Sender<Vec<u8>>,
     display_cfg: DisplayConfiguration,
+    display_buffer: Arc<Mutex<DisplayBuffer>>,
+    recorder: RecorderClient,
 ) {
     while let Ok(msg) = from_serial.recv().await {
         if let Ok(msg) = SerialMessage::try_from_bytes(&msg[..]) {
-            if let Err(err) = handle_serial_message(&to_serial, &to_ws, &display_cfg, msg).await {
+            if let Err(err) = handle_serial_message(
+                &to_serial,
+                &to_ws,
+                &display_cfg,
+                &display_buffer,
+                &recorder,
+                msg,
+            )
+            .await
+            {
                 tracing::error!("Error on handling serial message: {err}");
             }
         } else {
@@ -53,6 +77,8 @@ async fn handle_serial_message(
     to_serial: &Sender<Vec<u8>>,
     to_ws: &Sender<Vec<u8>>,
     display_cfg: &DisplayConfiguration,
+    display_buffer: &Arc<Mutex<DisplayBuffer>>,
+    recorder: &RecorderClient,
     msg: SerialMessage,
 ) -> anyhow::Result<()> {
     tracing::debug!("Handling serial message: {}", msg.as_ref());
@@ -82,11 +108,15 @@ async fn handle_serial_message(
                 .send(
                     rmp_serde::to_vec(&SimMessage::SetMatrixRowRgb(SetMatrixRowRgb {
                         row: row_number as usize,
-                        data: row_data,
+                        data: row_data.clone(),
                     }))
                     .unwrap(),
                 )
                 .await?;
+            {
+                let mut display_buffer = display_buffer.lock().unwrap();
+                display_buffer.update_row_rgb(row_number, row_data);
+            }
             to_serial
                 .send(
                     SerialMessage::UpdateRowRgbResponse(UpdateRowRgbResponse {
@@ -134,6 +164,9 @@ async fn handle_serial_message(
                 .await;
             if let Ok(msg) = rmp_serde::to_vec(&SimMessage::CommitRender) {
                 let _ = to_ws.send(msg).await;
+            }
+            if let Err(err) = recorder.capture_frame().await {
+                tracing::error!("Tried to capture frame on render: {err}");
             }
             to_serial
                 .send(SerialMessage::CommitRenderResponse(CommitRenderResponse {}).to_bytes())
@@ -187,6 +220,7 @@ async fn handle_ws_message(
     to_serial: Sender<Vec<u8>>,
     to_ws: Sender<Vec<u8>>,
     display_cfg: &DisplayConfiguration,
+    recorder: RecorderClient,
 ) {
     while let Ok(msg) = from_ws.recv().await {
         if let Ok(msg) = rmp_serde::from_slice::<SimMessage>(&msg) {
@@ -205,6 +239,16 @@ async fn handle_ws_message(
                             .send(rmp_serde::to_vec(&SimMessage::RequestRgb).unwrap())
                             .await
                             .unwrap();
+                    }
+                }
+                SimMessage::StartRecording => {
+                    if let Err(err) = recorder.start(Duration::from_secs(30)).await {
+                        tracing::error!("Failed to start recording: {err}");
+                    }
+                }
+                SimMessage::StopRecording => {
+                    if let Err(err) = recorder.stop().await {
+                        tracing::error!("Failed to stop recording: {err}");
                     }
                 }
                 _ => {
