@@ -1,4 +1,5 @@
 use gloo::{events::EventListener, utils::window};
+use js_sys::JsString;
 use std::ops::Deref;
 use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
@@ -57,6 +58,7 @@ pub struct CanvasProperties {
     pub renderer: Callback<HtmlCanvasElement>,
     pub matrix_buffer: UseStateHandle<core::cell::RefCell<simple_display::MatrixBuffer>>,
     pub rgb_matrix_buffer: UseStateHandle<core::cell::RefCell<rgb_display::MatrixBuffer>>,
+    pub last_render_time: UseStateHandle<JsString>,
 }
 
 pub mod simple_display {
@@ -93,6 +95,8 @@ pub mod simple_display {
                 );
             }
         }
+
+        log::info!("Draw simple display");
     }
 
     pub fn update_row(row_number: u8, data: Vec<bool>, matrix_buffer: &RefCell<MatrixBuffer>) {
@@ -108,6 +112,12 @@ pub mod simple_display {
                     *elem = 0x00;
                 }
             });
+    }
+
+    pub fn update_whole(lhs: &RefCell<MatrixBuffer>, rhs: &RefCell<MatrixBuffer>) {
+        let mut matrix_buffer = lhs.borrow_mut();
+        let other = rhs.borrow();
+        matrix_buffer.copy_from_slice(other.as_slice());
     }
 }
 

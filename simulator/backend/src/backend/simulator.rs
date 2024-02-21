@@ -93,8 +93,15 @@ async fn handle_serial_message(
             row_data_len,
             row_data,
         }) => {
-            let status =
-                handle_update_row(to_ws, display_cfg, row_number, row_data_len, row_data).await;
+            let status = handle_update_row(
+                to_ws,
+                display_cfg,
+                &display_buffer,
+                row_number,
+                row_data_len,
+                row_data,
+            )
+            .await;
             to_serial
                 .send(SerialMessage::UpdateRowResponse(UpdateRowResponse { status }).to_bytes())
                 .await?;
@@ -159,9 +166,11 @@ async fn handle_serial_message(
                 .await?;
         }
         SerialMessage::RequestCommitRender(RequestCommitRender {}) => {
-            let _ = to_ws
-                .send(rmp_serde::to_vec(&SimMessage::RequestRgb).unwrap())
-                .await;
+            if display_cfg.is_rgb {
+                let _ = to_ws
+                    .send(rmp_serde::to_vec(&SimMessage::RequestRgb).unwrap())
+                    .await;
+            }
             if let Ok(msg) = rmp_serde::to_vec(&SimMessage::CommitRender) {
                 let _ = to_ws.send(msg).await;
             }
@@ -181,24 +190,29 @@ async fn handle_serial_message(
 async fn handle_update_row(
     to_ws: &Sender<Vec<u8>>,
     display_cfg: &DisplayConfiguration,
+    display_buffer: &Arc<Mutex<DisplayBuffer>>,
     row_number: u8,
     row_data_len: u8,
     row_data: Vec<u8>,
 ) -> Status {
     if usize::from((row_data_len / 8) + if row_data_len % 8 == 0 { 0 } else { 1 }) == row_data.len()
     {
-        let pixel_states = row_data
-            .into_iter()
-            .map(|byte| {
-                (0..8)
-                    .into_iter()
-                    .map(move |bit| (byte & (1 << bit)) != 0x00)
-            })
-            .flatten()
-            .collect::<Vec<bool>>();
         if display_cfg.is_rgb {
             Status::Failure
         } else {
+            let pixel_states = row_data
+                .into_iter()
+                .map(|byte| {
+                    (0..8)
+                        .into_iter()
+                        .map(move |bit| (byte & (1 << bit)) != 0x00)
+                })
+                .flatten()
+                .collect::<Vec<bool>>();
+            {
+                let mut display_buffer = display_buffer.lock().unwrap();
+                display_buffer.update_row(row_number, pixel_states.clone());
+            }
             if let Ok(msg) = rmp_serde::to_vec(&SimMessage::SetMatrixRow(SetMatrixRow {
                 row: usize::from(row_number),
                 data: pixel_states,

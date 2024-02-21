@@ -11,12 +11,12 @@ pub fn debug_led(props: &DebugLedProperties) -> Html {
 
     html! {
         <div
-            style={ format!("background-color:{bg_color}; margin: 10px; border-radius: 15px") }
+            style={ format!("background-color:{bg_color}; margin: 10px; border: 5px; border-radius: 15px") }
             width="20"
             height="20"
             ref={node_ref}
         >
-            <p style={ format!("color:{text_color}") }>{ "DEBUG LED" }</p>
+            <p style={ format!("color:{text_color}; margin: 5px") }>{ "DEBUG LED" }</p>
         </div>
     }
 }

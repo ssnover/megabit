@@ -15,7 +15,7 @@ pub fn rgb_led(props: &RgbLedProperties) -> Html {
             style={ format!("background-color: {bg_color}; margin: 10px; border-radius: 15px") }
             ref={node_ref}
         >
-            <p style={ format!("color: {text_color}")}>{ "STATUS LED" }</p>
+            <p style={ format!("color: {text_color}; margin: 5px;")}>{ "STATUS LED" }</p>
         </div>
     }
 }
