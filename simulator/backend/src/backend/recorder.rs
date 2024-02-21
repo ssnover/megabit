@@ -162,7 +162,7 @@ impl Recorder {
             let display_buffer = self.display_buffer.lock().unwrap();
             let frame = Vec::from(display_buffer.get_frame());
             self.frames.push(frame);
-            tracing::info!("Adding frame");
+            tracing::debug!("Adding frame");
             true
         } else {
             false

@@ -41,8 +41,8 @@ pub fn write_region_rgb(
     }
 }
 
-pub fn render(rows_to_update: Vec<u8>) -> Result<(), extism_pdk::Error> {
-    unsafe { host::render(rows_to_update) }
+pub fn render(rows_to_update: impl IntoIterator<Item = u8>) -> Result<(), extism_pdk::Error> {
+    unsafe { host::render(rows_to_update.into_iter().collect()) }
 }
 
 pub fn set_monocolor_palette(on_color: Color, off_color: Color) -> Result<(), extism_pdk::Error> {
@@ -150,6 +150,23 @@ impl DrawTarget for MonocolorBuffer {
 
         Ok(())
     }
+}
+
+pub fn pack_monocolor_data(data: &[bool]) -> Vec<u8> {
+    data.iter()
+        .enumerate()
+        .step_by(8)
+        .map(|(idx, _)| {
+            let mut byte = 0u8;
+            let bits_remaining = data.len() - idx;
+            for shift in 0..std::cmp::min(8, bits_remaining) {
+                if data[idx + shift] {
+                    byte |= 1 << shift;
+                }
+            }
+            byte
+        })
+        .collect()
 }
 
 impl DrawTarget for RgbBuffer {

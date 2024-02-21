@@ -81,7 +81,6 @@ mod vars {
 
 #[plugin_fn]
 pub fn setup() -> FnResult<()> {
-    let display_cfg = display::get_display_info()?;
     kv_store::write(vars::FRAME_NUMBER, 0)?;
 
     Ok(())
@@ -125,7 +124,7 @@ pub fn run() -> FnResult<()> {
         (display_cfg.width as u32, display_cfg.height as u32),
         Vec::from(display_buffer.get_data()),
     )?;
-    render((0..display_cfg.height as u8).into_iter().collect())?;
+    render(0..display_cfg.height as u8)?;
 
     kv_store::write(vars::FRAME_NUMBER, (frame_number + 1) % 12)?;
 

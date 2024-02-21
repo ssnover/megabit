@@ -54,7 +54,7 @@ pub fn run() -> FnResult<()> {
         (shown_state.width as u32, shown_state.height as u32),
         shown_state.state.clone(),
     )?;
-    display::render((0..shown_state.height as u8).into_iter().collect())?;
+    display::render(0..shown_state.height as u8)?;
 
     // Calculate the next state
     if steps_without_change == 8 {

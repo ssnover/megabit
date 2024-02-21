@@ -29,7 +29,7 @@ pub fn setup() -> FnResult<()> {
         MonoTextStyle::new(&FONT_5X8, BinaryColor::On),
     );
     text.draw(&mut buffer).unwrap();
-    let rows_to_update = (0..display_cfg.height as u8).into_iter().collect();
+    let rows_to_update = 0..display_cfg.height as u8;
     let packed_data = buffer
         .get_data()
         .iter()
