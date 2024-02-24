@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 embedded-graphics = "0.8.1"
-extism-pdk = "1.0"
+extism-pdk = { version = "1.0", no-default-features = true }
 log = "0.4"
 megabit-wasm-macro = { path = "./megabit-wasm-macro" }
 rmp-serde = "1.1"
