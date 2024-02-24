@@ -496,7 +496,7 @@ pub struct CommitRenderResponse {
 
 impl CommitRenderResponse {
     pub fn to_bytes(self) -> Vec<u8> {
-        vec![]
+        vec![self.status.into()]
     }
 
     pub fn try_from_bytes(data: &[u8]) -> io::Result<Self> {

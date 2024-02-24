@@ -1,3 +1,4 @@
+workspace = { members = ["megabit-wasm-macro"] }
 [package]
 name = "megabit-app-sdk"
 version = "0.1.0"
@@ -7,5 +8,6 @@ edition = "2021"
 embedded-graphics = "0.8.1"
 extism-pdk = "1.0"
 log = "0.4"
+megabit-wasm-macro = { path = "./megabit-wasm-macro" }
 rmp-serde = "1.1"
 serde = { version = "1", features = ["derive"] }

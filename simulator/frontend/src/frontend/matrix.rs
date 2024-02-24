@@ -56,8 +56,6 @@ pub fn canvas(props: &CanvasProperties) -> Html {
 #[derive(Properties, PartialEq)]
 pub struct CanvasProperties {
     pub renderer: Callback<HtmlCanvasElement>,
-    pub matrix_buffer: UseStateHandle<core::cell::RefCell<simple_display::MatrixBuffer>>,
-    pub rgb_matrix_buffer: UseStateHandle<core::cell::RefCell<rgb_display::MatrixBuffer>>,
     pub last_render_time: UseStateHandle<JsString>,
 }
 
@@ -113,12 +111,6 @@ pub mod simple_display {
                 }
             });
     }
-
-    pub fn update_whole(lhs: &RefCell<MatrixBuffer>, rhs: &RefCell<MatrixBuffer>) {
-        let mut matrix_buffer = lhs.borrow_mut();
-        let other = rhs.borrow();
-        matrix_buffer.copy_from_slice(other.as_slice());
-    }
 }
 
 pub mod rgb_display {
@@ -173,12 +165,6 @@ pub mod rgb_display {
             .for_each(|(elem, new_color)| {
                 *elem = new_color;
             });
-    }
-
-    pub fn update_whole(lhs: &RefCell<MatrixBuffer>, rhs: &RefCell<MatrixBuffer>) {
-        let mut matrix_buffer = lhs.borrow_mut();
-        let other = rhs.borrow();
-        matrix_buffer.copy_from_slice(other.as_slice());
     }
 }
 

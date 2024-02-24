@@ -32,28 +32,14 @@ pub fn app() -> Html {
     let last_render_time = use_state(|| get_time());
     let last_render_time_setter = last_render_time.setter();
 
-    let matrix_buffer = use_state(|| {
+    let mono_buffer = use_state(|| {
         RefCell::new(vec![
             0u8;
             (matrix::simple_display::COLUMNS * matrix::simple_display::ROWS)
                 as usize
         ])
     });
-    let working_mono_buffer = use_state(|| {
-        RefCell::new(vec![
-            0u8;
-            (matrix::simple_display::COLUMNS * matrix::simple_display::ROWS)
-                as usize
-        ])
-    });
-    let rgb_matrix_buffer = use_state(|| {
-        RefCell::new(vec![
-            0u16;
-            (matrix::rgb_display::COLUMNS * matrix::rgb_display::ROWS)
-                as usize
-        ])
-    });
-    let working_matrix_buffer = use_state(|| {
+    let rgb_buffer = use_state(|| {
         RefCell::new(vec![
             0u16;
             (matrix::rgb_display::COLUMNS * matrix::rgb_display::ROWS)
@@ -62,8 +48,8 @@ pub fn app() -> Html {
     });
 
     let renderer_cb = {
-        let matrix_buffer = matrix_buffer.clone();
-        let rgb_matrix_buffer = rgb_matrix_buffer.clone();
+        let matrix_buffer = mono_buffer.clone();
+        let rgb_matrix_buffer = rgb_buffer.clone();
 
         if *is_rgb_display {
             Callback::from(move |canvas| {
@@ -79,13 +65,13 @@ pub fn app() -> Html {
     };
 
     let update_row_cb = {
-        let matrix_buffer = working_mono_buffer.clone();
+        let matrix_buffer = mono_buffer.clone();
         Callback::from(move |(row_number, data)| {
             matrix::simple_display::update_row(row_number, data, &matrix_buffer);
         })
     };
     let update_row_rgb_cb = {
-        let matrix_buffer = working_matrix_buffer.clone();
+        let matrix_buffer = rgb_buffer.clone();
         Callback::from(move |(row_number, data)| {
             log::debug!("Updating rgb callback");
             matrix::rgb_display::update_row(row_number, data, &matrix_buffer);
@@ -94,18 +80,12 @@ pub fn app() -> Html {
     let commit_render_cb = {
         let last_render_time_setter = last_render_time_setter.clone();
         if *is_rgb_display {
-            let rgb_matrix = rgb_matrix_buffer.clone();
-            let working_matrix = working_matrix_buffer.clone();
             Callback::from(move |()| {
                 last_render_time_setter.set(get_time());
-                matrix::rgb_display::update_whole(&rgb_matrix, &working_matrix);
             })
         } else {
-            let mono_matrix = matrix_buffer.clone();
-            let working_matrix = working_mono_buffer.clone();
             Callback::from(move |()| {
                 last_render_time_setter.set(get_time());
-                matrix::simple_display::update_whole(&mono_matrix, &working_matrix);
             })
         }
     };
@@ -122,7 +102,7 @@ pub fn app() -> Html {
                 <DebugLed {led_state} />
                 <RgbLed {rgb_state} />
             </div>
-            <Canvas renderer={renderer_cb} {matrix_buffer} {rgb_matrix_buffer} {last_render_time} />
+            <Canvas renderer={renderer_cb} {last_render_time} />
         </WebsocketProvider>
     }
 }
