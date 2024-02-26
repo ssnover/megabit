@@ -4,7 +4,7 @@ use yew::prelude::*;
 mod debug_led;
 use debug_led::DebugLed;
 mod matrix;
-use matrix::Canvas;
+use matrix::{Canvas, MatrixBuffer};
 mod recording_buttons;
 use recording_buttons::{StartRecording, StopRecording};
 mod rgb_led;
@@ -13,6 +13,7 @@ mod user_button;
 use user_button::UserButton;
 mod websocket_provider;
 use websocket_provider::WebsocketProvider;
+mod gauss_filter;
 
 fn get_time() -> JsString {
     js_sys::Date::new_0().to_utc_string()
@@ -33,18 +34,16 @@ pub fn app() -> Html {
     let last_render_time_setter = last_render_time.setter();
 
     let mono_buffer = use_state(|| {
-        RefCell::new(vec![
-            0u8;
-            (matrix::simple_display::COLUMNS * matrix::simple_display::ROWS)
-                as usize
-        ])
+        RefCell::new(MatrixBuffer::new(
+            matrix::simple_display::COLUMNS,
+            matrix::simple_display::ROWS,
+        ))
     });
     let rgb_buffer = use_state(|| {
-        RefCell::new(vec![
-            0u16;
-            (matrix::rgb_display::COLUMNS * matrix::rgb_display::ROWS)
-                as usize
-        ])
+        RefCell::new(MatrixBuffer::new(
+            matrix::rgb_display::COLUMNS,
+            matrix::rgb_display::ROWS,
+        ))
     });
 
     let renderer_cb = {

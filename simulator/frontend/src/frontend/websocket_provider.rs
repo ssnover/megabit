@@ -4,9 +4,9 @@ use gloo::{
     utils::window,
 };
 use megabit_sim_msgs::{SetDebugLed, SetMatrixRow, SetMatrixRowRgb, SetRgbLed, SimMessage};
-use std::{cell::RefCell, rc::Rc, time::Duration};
+use std::{cell::RefCell, rc::Rc};
 use wasm_bindgen_futures::spawn_local;
-use yew::{platform::time::sleep, prelude::*};
+use yew::prelude::*;
 
 #[derive(Clone, PartialEq)]
 pub struct WebsocketHandle {
@@ -76,7 +76,6 @@ pub fn WebsocketProvider(props: &WebsocketProviderProps) -> Html {
                             _ => log::debug!("Got bytes"),
                         }
                     }
-                    sleep(Duration::from_millis(30)).await;
                 }
             });
         }
