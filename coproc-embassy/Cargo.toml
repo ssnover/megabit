@@ -4,6 +4,17 @@ name = "megabit-coproc-embassy"
 version = "0.1.0"
 license = "MIT OR Apache-2.0"
 
+[features]
+# Used for the monocolor display
+dot_matrix = []
+# Used for the full-color display
+rgb_matrix = []
+
+[[bin]]
+name = "megabit-monocolor-coproc"
+path = "src/bin/megabit-monocolor-coproc.rs"
+required-features = ["dot_matrix"]
+
 [dependencies]
 cobs = { version = "0.2", default-features = false }
 cortex-m = { version = "0.7.6", features = ["inline-asm", "critical-section-single-core"] }
@@ -15,6 +26,7 @@ embassy-nrf = { version = "0.1", features = ["defmt", "nrf52840", "time-driver-r
 embassy-sync = { version = "0.5", features = ["defmt"] }
 embassy-time = { version = "0.3", features = ["defmt", "defmt-timestamp-uptime"] }
 embassy-usb = { version = "0.1", features = ["defmt"] }
+embassy-usb-driver = "0.1"
 embedded-hal = "1.0"
 embedded-hal-async = "1.0"
 panic-probe = { version = "0.3", features = ["print-defmt"] }
