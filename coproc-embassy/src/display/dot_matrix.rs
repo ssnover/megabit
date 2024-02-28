@@ -2,6 +2,9 @@ use core::convert::Infallible;
 use embedded_hal::{digital::OutputPin, spi::Error};
 use embedded_hal_async::spi::SpiBus;
 
+pub const COLUMNS: usize = 32;
+pub const ROWS: usize = 16;
+
 pub struct DotMatrix<SPIBUS: SpiBus, OUT1: OutputPin, OUT2: OutputPin> {
     spi_driver: SPIBUS,
     ncs_0: OUT1,
