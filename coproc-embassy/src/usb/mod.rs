@@ -1,9 +1,11 @@
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use embassy_usb::{
-    class::cdc_acm::{self, CdcAcmClass, Receiver, Sender},
+    class::cdc_acm::{self, CdcAcmClass, Receiver},
     driver::EndpointError,
 };
 use static_cell::StaticCell;
+
+mod responder;
+pub use responder::{Responder, UsbResponder};
 
 pub fn init_usb_device<T>(
     usb_driver: T,
@@ -15,7 +17,7 @@ where
     config.manufacturer = Some("Snostorm Labs");
     config.product = Some("Megabit coproc");
     config.serial_number = Some("0123456789ABCDEF");
-    config.max_power = 125;
+    config.max_power = 250;
     config.max_packet_size_0 = 64;
     config.device_class = 0xEF;
     config.device_sub_class = 0x02;
@@ -53,42 +55,6 @@ where
 {
     let (tx, rx) = class.split();
     (Responder::new(tx, encoded_buffer), rx)
-}
-
-pub struct Responder<T: embassy_usb_driver::Driver<'static>, const N: usize> {
-    inner: Mutex<NoopRawMutex, ResponderInner<T, N>>,
-}
-
-impl<T: embassy_usb_driver::Driver<'static>, const N: usize> Responder<T, N> {
-    pub fn new(tx: Sender<'static, T>, encoded_buffer: &'static mut [u8; N]) -> Self {
-        Self {
-            inner: Mutex::new(ResponderInner::new(tx, encoded_buffer)),
-        }
-    }
-
-    pub async fn send(&self, unencoded_buf: &[u8]) -> Result<(), EndpointError> {
-        self.inner.lock().await.send(unencoded_buf).await
-    }
-}
-
-struct ResponderInner<T: embassy_usb_driver::Driver<'static>, const N: usize> {
-    tx: Sender<'static, T>,
-    encoded_buffer: &'static mut [u8; N],
-}
-
-impl<T: embassy_usb_driver::Driver<'static>, const N: usize> ResponderInner<T, N> {
-    fn new(tx: Sender<'static, T>, encoded_buffer: &'static mut [u8; N]) -> Self {
-        Self { tx, encoded_buffer }
-    }
-
-    /// Takes a buffer of bytes, encodes them with COBS, adds a sentinel byte, and writes it out to the USB host.
-    async fn send(&mut self, unencoded_buf: &[u8]) -> Result<(), EndpointError> {
-        let encoded_bytes = cobs::encode(unencoded_buf, self.encoded_buffer);
-        self.encoded_buffer[encoded_bytes] = 0x00;
-        self.tx
-            .write_packet(&self.encoded_buffer[..encoded_bytes + 1])
-            .await
-    }
 }
 
 pub struct Disconnected {}

@@ -10,11 +10,12 @@ use embassy_nrf::{
     usb::{self, vbus_detect::HardwareVbusDetect},
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Channel};
+use embassy_time::Timer;
 use megabit_coproc_embassy::{
     cobs_buffer::CobsBuffer,
-    display,
+    display::{self, dot_matrix::DisplayCommandHandler},
     msg_router::{
-        display_cmd_router::{DisplayCmdRouter, DisplayCommand, RowUpdate, UpdateSingleCell},
+        display_cmd_router::{DisplayCmdRouter, DisplayCommand},
         MessageRouter,
     },
     usb::{init_usb_device, split, Responder},
@@ -74,25 +75,14 @@ async fn main(spawner: embassy_executor::Spawner) {
     let ncs_0 = Output::new(nrf_peripherals.P0_27, Level::High, OutputDrive::Standard);
     let ncs_1 = Output::new(nrf_peripherals.P0_21, Level::High, OutputDrive::Standard);
 
-    let mut dot_matrix = DotMatrix::new(spim, ncs_0, ncs_1).await.unwrap();
+    let dot_matrix = DotMatrix::new(spim, ncs_0, ncs_1).await.unwrap();
 
-    let rx = display_cmd_channel.receiver();
+    let mut display_cmd_handler =
+        DisplayCommandHandler::new(dot_matrix, responder, display_cmd_channel.receiver());
+
     loop {
-        match rx.receive().await {
-            DisplayCommand::UpdateSingleCell(UpdateSingleCell { row, col, value }) => {
-                dot_matrix
-                    .set_pixel(row as usize, col as usize, value)
-                    .await
-                    .unwrap();
-                let response_buf = [0xa0, 0x51];
-                responder.send(&response_buf).await.unwrap();
-            }
-            DisplayCommand::RowUpdate(RowUpdate { row, row_data }) => {
-                dot_matrix.update_row(row as usize, row_data).await.unwrap();
-                let response_buf = [0xa0, 0x01, 0x00];
-                responder.send(&response_buf).await.unwrap();
-            }
-        }
+        display_cmd_handler.try_handle_cmd().await;
+        Timer::after_millis(400).await;
         if led.is_set_high() {
             led.set_low();
         } else {
@@ -102,7 +92,7 @@ async fn main(spawner: embassy_executor::Spawner) {
 }
 
 #[embassy_executor::task]
-pub async fn msg_handler_task(router: MessageRouter<UsbDriver, 1024, 256>) {
+pub async fn msg_handler_task(router: MessageRouter<UsbDriver, Responder<UsbDriver, 256>, 1024>) {
     router.run().await
 }
 

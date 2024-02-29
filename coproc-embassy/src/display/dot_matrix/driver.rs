@@ -1,8 +1,11 @@
+use super::DotMatrixDriver;
 use core::convert::Infallible;
+use core::future::Future;
 use embedded_hal::{digital::OutputPin, spi::Error};
 use embedded_hal_async::spi::SpiBus;
 
 pub const COLUMNS: usize = 32;
+pub const COLUMN_DATA_SIZE: usize = COLUMNS / 8;
 pub const ROWS: usize = 16;
 
 pub struct DotMatrix<SPIBUS: SpiBus, OUT1: OutputPin, OUT2: OutputPin> {
@@ -52,42 +55,6 @@ impl<
         }
 
         Ok(())
-    }
-
-    pub async fn set_pixel(&mut self, row: usize, col: usize, state: bool) -> Result<(), SPIERR> {
-        if state {
-            self.state_buffer[row][col / 8] |= 1 << (col % 8);
-        } else {
-            self.state_buffer[row][col / 8] &= !(1 << (col % 8));
-        }
-        let (ncs, subrow) = if (0..8).contains(&row) {
-            (
-                &mut self.ncs_0 as &mut dyn OutputPin<Error = Infallible>,
-                row,
-            )
-        } else {
-            (
-                &mut self.ncs_1 as &mut dyn OutputPin<Error = Infallible>,
-                row - 8,
-            )
-        };
-        Self::update_display_row(ncs, &mut self.spi_driver, subrow, &self.state_buffer[row]).await
-    }
-
-    pub async fn update_row(&mut self, row: usize, row_data: [u8; 4]) -> Result<(), SPIERR> {
-        self.state_buffer[row] = row_data;
-        let (ncs, subrow) = if (0..8).contains(&row) {
-            (
-                &mut self.ncs_0 as &mut dyn OutputPin<Error = Infallible>,
-                row,
-            )
-        } else {
-            (
-                &mut self.ncs_1 as &mut dyn OutputPin<Error = Infallible>,
-                row - 8,
-            )
-        };
-        Self::update_display_row(ncs, &mut self.spi_driver, subrow, &self.state_buffer[row]).await
     }
 
     async fn init_display(
@@ -148,7 +115,7 @@ impl<
         ncs: &mut dyn OutputPin<Error = Infallible>,
         spi: &mut SPIBUS,
         row: usize,
-        row_data: &[u8; 4],
+        row_data: &[u8; COLUMN_DATA_SIZE],
     ) -> Result<(), SPIERR> {
         let opcode = (7 - row as u8) + 1;
         let cmd_data = [
@@ -167,5 +134,60 @@ impl<
         ncs.set_high().unwrap();
 
         Ok(())
+    }
+}
+
+impl<
+        SPIERR: Error,
+        SPIBUS: SpiBus<Error = SPIERR>,
+        OUT1: OutputPin<Error = Infallible>,
+        OUT2: OutputPin<Error = Infallible>,
+    > DotMatrixDriver<COLUMN_DATA_SIZE> for DotMatrix<SPIBUS, OUT1, OUT2>
+{
+    type Error = SPIERR;
+
+    fn set_pixel(
+        &mut self,
+        row: usize,
+        col: usize,
+        state: bool,
+    ) -> impl Future<Output = Result<(), Self::Error>> {
+        if state {
+            self.state_buffer[row][col / 8] |= 1 << (col % 8);
+        } else {
+            self.state_buffer[row][col / 8] &= !(1 << (col % 8));
+        }
+        let (ncs, subrow) = if (0..8).contains(&row) {
+            (
+                &mut self.ncs_0 as &mut dyn OutputPin<Error = Infallible>,
+                row,
+            )
+        } else {
+            (
+                &mut self.ncs_1 as &mut dyn OutputPin<Error = Infallible>,
+                row - 8,
+            )
+        };
+        Self::update_display_row(ncs, &mut self.spi_driver, subrow, &self.state_buffer[row])
+    }
+
+    fn update_row(
+        &mut self,
+        row: usize,
+        row_data: [u8; COLUMN_DATA_SIZE],
+    ) -> impl Future<Output = Result<(), Self::Error>> {
+        self.state_buffer[row] = row_data;
+        let (ncs, subrow) = if (0..8).contains(&row) {
+            (
+                &mut self.ncs_0 as &mut dyn OutputPin<Error = Infallible>,
+                row,
+            )
+        } else {
+            (
+                &mut self.ncs_1 as &mut dyn OutputPin<Error = Infallible>,
+                row - 8,
+            )
+        };
+        Self::update_display_row(ncs, &mut self.spi_driver, subrow, &self.state_buffer[row])
     }
 }

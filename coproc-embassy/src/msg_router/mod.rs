@@ -1,5 +1,5 @@
 use crate::cobs_buffer::CobsBuffer;
-use crate::usb::{self, Disconnected};
+use crate::usb::{Disconnected, UsbResponder};
 use embassy_usb::class::cdc_acm::Receiver as UsbReceiver;
 
 pub mod display_cmd_router;
@@ -7,25 +7,25 @@ use display_cmd_router::DisplayCmdRouter;
 
 pub struct MessageRouter<
     D: embassy_usb_driver::Driver<'static> + 'static,
+    R: UsbResponder + 'static,
     const DECODE_BUFFER_SIZE: usize,
-    const ENCODE_BUFFER_SIZE: usize,
 > {
     class: UsbReceiver<'static, D>,
     cobs_decoder: CobsBuffer<'static, DECODE_BUFFER_SIZE>,
-    responder: &'static usb::Responder<D, ENCODE_BUFFER_SIZE>,
+    responder: &'static R,
     display_router: DisplayCmdRouter,
 }
 
 impl<
         D: embassy_usb_driver::Driver<'static> + 'static,
+        R: UsbResponder + 'static,
         const DECODE_BUFFER_SIZE: usize,
-        const ENCODE_BUFFER_SIZE: usize,
-    > MessageRouter<D, DECODE_BUFFER_SIZE, ENCODE_BUFFER_SIZE>
+    > MessageRouter<D, R, DECODE_BUFFER_SIZE>
 {
     pub fn new(
         class: UsbReceiver<'static, D>,
         cobs_decoder: CobsBuffer<'static, DECODE_BUFFER_SIZE>,
-        responder: &'static usb::Responder<D, ENCODE_BUFFER_SIZE>,
+        responder: &'static R,
         display_router: DisplayCmdRouter,
     ) -> Self {
         Self {
