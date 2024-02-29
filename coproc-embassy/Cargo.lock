@@ -593,6 +593,7 @@ dependencies = [
  "embassy-sync 0.5.0",
  "embassy-time",
  "embassy-usb",
+ "embassy-usb-driver",
  "embedded-hal 1.0.0",
  "embedded-hal-async",
  "panic-probe",
