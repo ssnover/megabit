@@ -5,15 +5,14 @@ use defmt_rtt as _;
 use embassy_nrf::{
     bind_interrupts,
     gpio::{Level, Output, OutputDrive},
-    peripherals::{self, P0_21, P0_27, SPI3},
-    spim::{self, Spim},
+    peripherals, spim,
     usb::{self, vbus_detect::HardwareVbusDetect},
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Channel};
 use embassy_time::Timer;
 use megabit_coproc_embassy::{
     cobs_buffer::CobsBuffer,
-    display::{self, dot_matrix::DisplayCommandHandler},
+    display::{dot_matrix::DisplayCommandHandler, DotMatrix, DISPLAY_CMD_QUEUE_SIZE},
     msg_router::{
         display_cmd_router::{DisplayCmdRouter, DisplayCommand},
         MessageRouter,
@@ -30,11 +29,10 @@ bind_interrupts!(struct Irqs {
 });
 
 type UsbDriver = usb::Driver<'static, peripherals::USBD, HardwareVbusDetect>;
-type DotMatrix =
-    display::DotMatrix<Spim<'static, SPI3>, Output<'static, P0_27>, Output<'static, P0_21>>;
 
-static DISPLAY_CMD_CHANNEL: StaticCell<Channel<NoopRawMutex, DisplayCommand, 1>> =
-    StaticCell::new();
+static DISPLAY_CMD_CHANNEL: StaticCell<
+    Channel<NoopRawMutex, DisplayCommand, DISPLAY_CMD_QUEUE_SIZE>,
+> = StaticCell::new();
 static COBS_DECODE_BUFFER: StaticCell<[u8; 1024]> = StaticCell::new();
 static COBS_ENCODE_BUFFER: StaticCell<[u8; 256]> = StaticCell::new();
 static USB_RESPONDER: StaticCell<Responder<UsbDriver, 256>> = StaticCell::new();
@@ -49,7 +47,7 @@ async fn main(spawner: embassy_executor::Spawner) {
     let responder = USB_RESPONDER.init(responder);
 
     let display_cmd_channel = DISPLAY_CMD_CHANNEL.init(Channel::new());
-    let display_cmd_router = DisplayCmdRouter::new(display_cmd_channel.sender());
+    let display_cmd_router = DisplayCmdRouter::new(display_cmd_channel.sender(), false);
 
     let router = MessageRouter::new(
         receiver,
@@ -74,21 +72,22 @@ async fn main(spawner: embassy_executor::Spawner) {
     );
     let ncs_0 = Output::new(nrf_peripherals.P0_27, Level::High, OutputDrive::Standard);
     let ncs_1 = Output::new(nrf_peripherals.P0_21, Level::High, OutputDrive::Standard);
-
     let dot_matrix = DotMatrix::new(spim, ncs_0, ncs_1).await.unwrap();
 
     let mut display_cmd_handler =
         DisplayCommandHandler::new(dot_matrix, responder, display_cmd_channel.receiver());
 
-    loop {
-        display_cmd_handler.try_handle_cmd().await;
-        Timer::after_millis(400).await;
-        if led.is_set_high() {
-            led.set_low();
-        } else {
-            led.set_high();
+    embassy_futures::join::join(display_cmd_handler.run(), async {
+        loop {
+            Timer::after_millis(1000).await;
+            if led.is_set_high() {
+                led.set_low();
+            } else {
+                led.set_high();
+            }
         }
-    }
+    })
+    .await;
 }
 
 #[embassy_executor::task]

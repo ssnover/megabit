@@ -1,12 +1,23 @@
 use crate::{
-    msg_router::display_cmd_router::{DisplayCommand, RowUpdate, UpdateSingleCell},
+    msg_router::{
+        cmds::*,
+        display_cmd_router::{DisplayCommand, RowUpdate, RowUpdateRgb, UpdateSingleCell},
+    },
     usb::UsbResponder,
 };
 use core::future::Future;
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Receiver};
+use embassy_sync::{
+    blocking_mutex::raw::NoopRawMutex,
+    channel::{Receiver, Sender},
+};
 
 mod driver;
 pub use driver::{DotMatrix, COLUMNS, COLUMN_DATA_SIZE, ROWS};
+
+pub const DISPLAY_CMD_QUEUE_SIZE: usize = 8;
+pub type DisplayCmdSender = Sender<'static, NoopRawMutex, DisplayCommand, DISPLAY_CMD_QUEUE_SIZE>;
+pub type DisplayCmdReceiver =
+    Receiver<'static, NoopRawMutex, DisplayCommand, DISPLAY_CMD_QUEUE_SIZE>;
 
 pub trait DotMatrixDriver<const COLUMN_DATA_SIZE: usize> {
     type Error: core::fmt::Debug;
@@ -28,15 +39,11 @@ pub trait DotMatrixDriver<const COLUMN_DATA_SIZE: usize> {
 pub struct DisplayCommandHandler<D: DotMatrixDriver<COLUMN_DATA_SIZE>, R: UsbResponder + 'static> {
     driver: D,
     responder: &'static R,
-    cmd_rx: Receiver<'static, NoopRawMutex, DisplayCommand, 1>,
+    cmd_rx: DisplayCmdReceiver,
 }
 
 impl<D: DotMatrixDriver<COLUMN_DATA_SIZE>, R: UsbResponder + 'static> DisplayCommandHandler<D, R> {
-    pub fn new(
-        driver: D,
-        responder: &'static R,
-        cmd_rx: Receiver<'static, NoopRawMutex, DisplayCommand, 1>,
-    ) -> Self {
+    pub fn new(driver: D, responder: &'static R, cmd_rx: DisplayCmdReceiver) -> Self {
         Self {
             driver,
             responder,
@@ -44,9 +51,10 @@ impl<D: DotMatrixDriver<COLUMN_DATA_SIZE>, R: UsbResponder + 'static> DisplayCom
         }
     }
 
-    pub async fn try_handle_cmd(&mut self) {
-        while let Ok(cmd) = self.cmd_rx.try_receive() {
-            self.handle_cmd(&cmd).await
+    pub async fn run(&mut self) {
+        loop {
+            let cmd = self.cmd_rx.receive().await;
+            self.handle_cmd(&cmd).await;
         }
     }
 
@@ -57,7 +65,11 @@ impl<D: DotMatrixDriver<COLUMN_DATA_SIZE>, R: UsbResponder + 'static> DisplayCom
                     .set_pixel(*row as usize, *col as usize, *value)
                     .await
                     .unwrap();
-                let response_buf = [0xa0, 0x51];
+                let response_buf = [
+                    set_single_cell_response::MAJOR,
+                    set_single_cell_response::MINOR,
+                    0x00,
+                ];
                 self.responder.send(&response_buf).await.unwrap();
             }
             DisplayCommand::RowUpdate(RowUpdate { row, row_data }) => {
@@ -65,7 +77,38 @@ impl<D: DotMatrixDriver<COLUMN_DATA_SIZE>, R: UsbResponder + 'static> DisplayCom
                     .update_row(*row as usize, *row_data)
                     .await
                     .unwrap();
-                let response_buf = [0xa0, 0x01, 0x00];
+                let response_buf = [update_row_response::MAJOR, update_row_response::MINOR, 0x00];
+                self.responder.send(&response_buf).await.unwrap();
+            }
+            DisplayCommand::RowUpdateRgb(RowUpdateRgb { row: _ }) => {
+                let response_buf = [
+                    update_row_rgb_response::MAJOR,
+                    update_row_rgb_response::MINOR,
+                    0x01,
+                ];
+                self.responder.send(&response_buf).await.unwrap();
+            }
+            DisplayCommand::GetDisplayInfo => {
+                let mut response_buf = [0u8; 11];
+                response_buf[0] = get_display_info_response::MAJOR;
+                response_buf[1] = get_display_info_response::MINOR;
+                response_buf[2..6]
+                    .iter_mut()
+                    .zip(((COLUMNS) as u32).to_be_bytes().into_iter())
+                    .for_each(|(dst, src)| *dst = src);
+                response_buf[6..10]
+                    .iter_mut()
+                    .zip(((ROWS) as u32).to_be_bytes().into_iter())
+                    .for_each(|(dst, src)| *dst = src);
+                response_buf[10] = 0x00; // false
+                self.responder.send(&response_buf).await.unwrap();
+            }
+            DisplayCommand::CommitRender => {
+                let response_buf = [
+                    commit_render_response::MAJOR,
+                    commit_render_response::MINOR,
+                    0x00,
+                ];
                 self.responder.send(&response_buf).await.unwrap();
             }
         }
