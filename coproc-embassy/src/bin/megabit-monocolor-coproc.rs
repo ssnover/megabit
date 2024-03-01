@@ -4,14 +4,14 @@
 use defmt_rtt as _;
 use embassy_nrf::{
     bind_interrupts,
-    gpio::{Input, Level, Output, OutputDrive, Pull},
+    gpio::{Input, Level, Output, OutputDrive, Pin, Pull},
     peripherals,
-    pwm::{Prescaler, SimplePwm},
+    pwm::{Instance, Prescaler, SimplePwm},
     spim,
     usb::{self, vbus_detect::HardwareVbusDetect},
+    Peripheral,
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Channel};
-use embassy_time::Timer;
 use megabit_coproc_embassy::{
     cobs_buffer::CobsBuffer,
     display::{dot_matrix::DisplayCommandHandler, DotMatrix, DISPLAY_CMD_QUEUE_SIZE},
@@ -19,6 +19,7 @@ use megabit_coproc_embassy::{
         display_cmd_router::{DisplayCmdRouter, DisplayCommand},
         MessageRouter,
     },
+    system_state::{Button, RgbLed, SystemStateManager},
     usb::{init_usb_device, split, Responder},
 };
 use panic_probe as _;
@@ -62,19 +63,14 @@ async fn main(spawner: embassy_executor::Spawner) {
         display_cmd_router,
     );
 
-    let mut led_pin = Output::new(nrf_peripherals.P1_11, Level::Low, OutputDrive::Standard);
-    let mut button_pin = Input::new(nrf_peripherals.P1_12, Pull::Down);
-    let mut pwm = SimplePwm::new_3ch(
+    let led_pin = Output::new(nrf_peripherals.P1_11, Level::Low, OutputDrive::Standard);
+    let button_pin = UserButton::new(nrf_peripherals.P1_12);
+    let pwm = NanoRgbLed::new(
         nrf_peripherals.PWM0,
         nrf_peripherals.P0_24,
         nrf_peripherals.P0_06,
         nrf_peripherals.P0_16,
     );
-    pwm.set_prescaler(Prescaler::Div1);
-    pwm.set_max_duty(0x7fff);
-    pwm.set_duty(0, 0);
-    pwm.set_duty(1, 0);
-    pwm.set_duty(2, 0);
 
     let mut config = spim::Config::default();
     config.frequency = spim::Frequency::M4;
@@ -93,41 +89,12 @@ async fn main(spawner: embassy_executor::Spawner) {
 
     let mut display_cmd_handler =
         DisplayCommandHandler::new(dot_matrix, responder, display_cmd_channel.receiver());
+    let system_state_mgr = SystemStateManager::new(responder, pwm, led_pin, button_pin);
 
     spawner.spawn(usb_driver_task(usb)).unwrap();
     spawner.spawn(msg_handler_task(router)).unwrap();
-    let mut count = 0u8;
 
-    embassy_futures::join::join(display_cmd_handler.run(), async {
-        loop {
-            button_pin.wait_for_falling_edge().await;
-            Timer::after_millis(50).await;
-            count = (count + 1) & 0b11;
-            if led_pin.is_set_high() {
-                led_pin.set_low();
-            } else {
-                led_pin.set_high();
-            }
-            if count == 0 {
-                pwm.set_duty(0, 0);
-                pwm.set_duty(1, 0);
-                pwm.set_duty(2, 0);
-            } else if count == 1 {
-                pwm.set_duty(0, 0xff << 7);
-                pwm.set_duty(1, 0);
-                pwm.set_duty(2, 0);
-            } else if count == 2 {
-                pwm.set_duty(0, 0);
-                pwm.set_duty(1, 0xff << 7);
-                pwm.set_duty(2, 0);
-            } else if count == 3 {
-                pwm.set_duty(0, 0);
-                pwm.set_duty(1, 0);
-                pwm.set_duty(2, 0xff << 7);
-            }
-        }
-    })
-    .await;
+    embassy_futures::join::join(display_cmd_handler.run(), system_state_mgr.run()).await;
 }
 
 #[embassy_executor::task]
@@ -144,4 +111,64 @@ pub async fn msg_handler_task(
 #[embassy_executor::task]
 pub async fn usb_driver_task(mut device: embassy_usb::UsbDevice<'static, UsbDriver>) {
     device.run().await;
+}
+
+struct NanoRgbLed<T: Instance> {
+    pwm: SimplePwm<'static, T>,
+}
+
+impl<T: Instance> NanoRgbLed<T> {
+    const MAX_DUTY_CYCLE: u16 = 0x7fff;
+    const RED_CHANNEL: usize = 0;
+    const GREEN_CHANNEL: usize = 1;
+    const BLUE_CHANNEL: usize = 2;
+
+    pub fn new(
+        pwm: impl Peripheral<P = T> + 'static,
+        red_pin: impl Peripheral<P = impl Pin> + 'static,
+        green_pin: impl Peripheral<P = impl Pin> + 'static,
+        blue_pin: impl Peripheral<P = impl Pin> + 'static,
+    ) -> Self {
+        let mut pwm = SimplePwm::new_3ch(pwm, red_pin, green_pin, blue_pin);
+        pwm.set_prescaler(Prescaler::Div1);
+        pwm.set_max_duty(Self::MAX_DUTY_CYCLE);
+        pwm.set_duty(Self::RED_CHANNEL, 0);
+        pwm.set_duty(Self::GREEN_CHANNEL, 0);
+        pwm.set_duty(Self::BLUE_CHANNEL, 0);
+        Self { pwm }
+    }
+}
+
+impl<T: Instance> RgbLed for NanoRgbLed<T> {
+    fn set_state(&mut self, r: u8, g: u8, b: u8) {
+        self.pwm.set_duty(Self::RED_CHANNEL, (r as u16) << 7);
+        self.pwm.set_duty(Self::GREEN_CHANNEL, (g as u16) << 7);
+        self.pwm.set_duty(Self::BLUE_CHANNEL, (b as u16) << 7);
+    }
+
+    fn off(&mut self) {
+        self.set_state(0, 0, 0)
+    }
+}
+
+struct UserButton<T: Pin> {
+    button_input: Input<'static, T>,
+}
+
+impl<T: Pin> UserButton<T> {
+    pub fn new(pin: impl Peripheral<P = T> + 'static) -> Self {
+        Self {
+            button_input: Input::new(pin, Pull::Down),
+        }
+    }
+}
+
+impl<T: Pin> Button for UserButton<T> {
+    fn wait_for_press(&mut self) -> impl core::future::Future<Output = ()> {
+        self.button_input.wait_for_rising_edge()
+    }
+
+    fn wait_for_release(&mut self) -> impl core::future::Future<Output = ()> {
+        self.button_input.wait_for_falling_edge()
+    }
 }
