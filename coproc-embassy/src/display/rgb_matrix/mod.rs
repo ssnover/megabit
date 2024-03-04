@@ -49,11 +49,12 @@ impl<R: UsbResponder + 'static> DisplayCommandHandler<R> {
         match cmd {
             DisplayCommand::UpdateSingleCell(UpdateSingleCell { row, col, value }) => {
                 self.driver
-                    .set_cell(*row, *col, if *value { self.monocolor } else { 0x00 });
+                    .set_cell(*row, *col, if *value { self.monocolor } else { 0x00 })
+                    .await;
                 let response_buf = [
                     set_single_cell_response::MAJOR,
                     set_single_cell_response::MINOR,
-                    0x01,
+                    0x00,
                 ];
                 self.responder.send(&response_buf).await.unwrap();
             }

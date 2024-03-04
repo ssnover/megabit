@@ -5,8 +5,8 @@
 
 use super::{COLUMNS, ROWS};
 use core::{cell::RefCell, convert::Infallible};
-use critical_section::CriticalSection;
-use embassy_sync::blocking_mutex::CriticalSectionMutex;
+use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
+use embassy_sync::mutex::Mutex;
 use embassy_time::Timer;
 use embedded_hal::digital::OutputPin;
 
@@ -134,13 +134,13 @@ type PixelBuffer = [u16; ROWS * COLUMNS];
 
 pub struct WaveshareDriver<PINS: DriverPins> {
     pins: PINS,
-    pixel_data: &'static CriticalSectionMutex<RefCell<PixelBuffer>>,
+    pixel_data: &'static Mutex<ThreadModeRawMutex, RefCell<PixelBuffer>>,
 }
 
 impl<PINS: DriverPins> WaveshareDriver<PINS> {
     pub fn new(
         pins: PINS,
-        pixel_data: &'static CriticalSectionMutex<RefCell<PixelBuffer>>,
+        pixel_data: &'static Mutex<ThreadModeRawMutex, RefCell<PixelBuffer>>,
     ) -> Self {
         Self { pins, pixel_data }
     }
@@ -149,45 +149,39 @@ impl<PINS: DriverPins> WaveshareDriver<PINS> {
         DriverHandle::new(self.pixel_data)
     }
 
-    pub async fn run(&mut self) {
-        //loop {
-        Timer::after_millis(5).await;
-        critical_section::with(|cs| {
-            self.render(cs, || embassy_futures::block_on(Timer::after_micros(2)));
-        });
-        //}
+    pub async fn run(&mut self, mut timing_pin: impl OutputPin) {
+        loop {
+            Timer::after_millis(5).await;
+            self.render(&mut timing_pin).await;
+        }
     }
 
-    fn render<'cs, F>(&mut self, cs: CriticalSection<'cs>, delay: F)
-    where
-        F: Fn() -> (),
-    {
-        let pixel_data = self.pixel_data.borrow(cs).borrow();
+    pub async fn render(&mut self, timing_pin: &mut impl OutputPin) {
+        let pixel_data = self.pixel_data.lock().await;
+        let pixel_data = pixel_data.borrow();
         for pwm_step in 0..(1u8 << 5) {
-            let pwm_step = pwm_step << 3;
             for row in 0..(ROWS / 2) {
-                let top_row = &pixel_data[(row * COLUMNS)..((row + 1) * COLUMNS)];
-                let bottom_row = &pixel_data[((pixel_data.len() / 2) + (row * COLUMNS))
-                    ..((pixel_data.len() / 2) + ((row + 1) * COLUMNS))];
-
-                for (upper_pixel, lower_pixel) in top_row.iter().zip(bottom_row.iter()) {
-                    let (r1, g1, b1) = channels(*upper_pixel);
-                    let (r2, g2, b2) = channels(*lower_pixel);
-                    self.pins.r1().set_state((r1 >= pwm_step).into()).unwrap();
-                    self.pins.g1().set_state((g1 >= pwm_step).into()).unwrap();
-                    self.pins.b1().set_state((b1 >= pwm_step).into()).unwrap();
-                    self.pins.r2().set_state((r2 >= pwm_step).into()).unwrap();
-                    self.pins.g2().set_state((g2 >= pwm_step).into()).unwrap();
-                    self.pins.b2().set_state((b2 >= pwm_step).into()).unwrap();
+                for idx in (row * COLUMNS)..((row + 1) * COLUMNS) {
+                    timing_pin.set_low().unwrap();
+                    let idx2 = idx + pixel_data.len() / 2;
+                    let (r1, g1, b1) = channels(pixel_data[idx]);
+                    let (r2, g2, b2) = channels(pixel_data[idx2]);
+                    self.pins.r1().set_state((r1 > pwm_step).into()).unwrap();
+                    self.pins.g1().set_state((g1 > pwm_step).into()).unwrap();
+                    self.pins.b1().set_state((b1 > pwm_step).into()).unwrap();
+                    self.pins.r2().set_state((r2 > pwm_step).into()).unwrap();
+                    self.pins.g2().set_state((g2 > pwm_step).into()).unwrap();
+                    self.pins.b2().set_state((b2 > pwm_step).into()).unwrap();
 
                     self.pins.clk().set_high().unwrap();
                     self.pins.clk().set_low().unwrap();
+                    timing_pin.set_high().unwrap();
                 }
 
                 self.pins.oe().set_high().unwrap();
-                delay();
+                Timer::after_micros(2).await;
                 self.pins.lat().set_low().unwrap();
-                delay();
+                Timer::after_micros(2).await;
                 self.pins.lat().set_high().unwrap();
 
                 // set the address
@@ -208,7 +202,7 @@ impl<PINS: DriverPins> WaveshareDriver<PINS> {
                     .d()
                     .set_state(((addr & (1 << 3)) != 0).into())
                     .unwrap();
-                delay();
+                Timer::after_micros(2).await;
                 self.pins.oe().set_low().unwrap();
             }
         }
@@ -225,19 +219,18 @@ fn channels(pixel_color: u16) -> (u8, u8, u8) {
 }
 
 pub struct DriverHandle {
-    pixel_data: &'static CriticalSectionMutex<RefCell<PixelBuffer>>,
+    pixel_data: &'static Mutex<ThreadModeRawMutex, RefCell<PixelBuffer>>,
 }
 
 impl DriverHandle {
-    pub fn new(pixel_data: &'static CriticalSectionMutex<RefCell<PixelBuffer>>) -> Self {
+    pub fn new(pixel_data: &'static Mutex<ThreadModeRawMutex, RefCell<PixelBuffer>>) -> Self {
         Self { pixel_data }
     }
 
-    pub fn set_cell(&mut self, row: u8, col: u8, value: u16) {
+    pub async fn set_cell(&mut self, row: u8, col: u8, value: u16) {
         let idx = col as usize + (row as usize * COLUMNS);
-        self.pixel_data.lock(|pixel_data| {
-            let mut pixel_data = pixel_data.borrow_mut();
-            pixel_data[idx] = value;
-        })
+        let pixel_data = self.pixel_data.lock().await;
+        let mut pixel_data = pixel_data.borrow_mut();
+        pixel_data[idx] = value;
     }
 }

@@ -2,19 +2,20 @@
 #![no_main]
 
 use core::cell::RefCell;
-
 use defmt_rtt as _;
 use embassy_nrf::{
     bind_interrupts,
     gpio::{Input, Level, Output, OutputDrive, Pin, Pull},
     peripherals,
     pwm::{Instance, Prescaler, SimplePwm},
+    timer::Timer,
     usb::{self, vbus_detect::HardwareVbusDetect},
     Peripheral,
 };
 use embassy_sync::{
-    blocking_mutex::{raw::NoopRawMutex, CriticalSectionMutex},
+    blocking_mutex::raw::{NoopRawMutex, ThreadModeRawMutex},
     channel::Channel,
+    mutex::Mutex,
 };
 use megabit_coproc_embassy::{
     cobs_buffer::CobsBuffer,
@@ -51,7 +52,7 @@ static SYSTEM_CMD_CHANNEL: StaticCell<Channel<NoopRawMutex, SystemCommand, SYSTE
 static COBS_DECODE_BUFFER: StaticCell<[u8; COBS_DECODE_BUFFER_SIZE]> = StaticCell::new();
 static COBS_ENCODE_BUFFER: StaticCell<[u8; COBS_ENCODE_BUFFER_SIZE]> = StaticCell::new();
 static USB_RESPONDER: StaticCell<Responder<UsbDriver, COBS_ENCODE_BUFFER_SIZE>> = StaticCell::new();
-static PIXEL_BUFFER_HANDLE: StaticCell<CriticalSectionMutex<RefCell<[u16; ROWS * COLUMNS]>>> =
+static PIXEL_BUFFER_HANDLE: StaticCell<Mutex<ThreadModeRawMutex, RefCell<[u16; ROWS * COLUMNS]>>> =
     StaticCell::new();
 
 #[embassy_executor::main]
@@ -78,8 +79,11 @@ async fn main(spawner: embassy_executor::Spawner) {
         system_cmd_router,
     );
 
-    let pixel_buffer = PIXEL_BUFFER_HANDLE
-        .init_with(|| CriticalSectionMutex::new(RefCell::new([0u16; ROWS * COLUMNS])));
+    let mut debug_pin = Output::new(nrf_peripherals.P0_27, Level::Low, OutputDrive::Standard);
+    let mut delay = Timer::new(nrf_peripherals.TIMER4);
+
+    let pixel_buffer =
+        PIXEL_BUFFER_HANDLE.init_with(|| Mutex::new(RefCell::new([0u16; ROWS * COLUMNS])));
 
     let r1 = Output::new(nrf_peripherals.P0_04, Level::Low, OutputDrive::Standard);
     let g1 = Output::new(nrf_peripherals.P0_05, Level::Low, OutputDrive::Standard);
@@ -126,11 +130,12 @@ async fn main(spawner: embassy_executor::Spawner) {
     spawner.spawn(msg_handler_task(router)).unwrap();
 
     //embassy_futures::join::join(display_cmd_handler.run(), system_state_mgr.run()).await;
-    embassy_futures::join::join3(
-        display_cmd_handler.run(),
-        system_state_mgr.run(),
-        waveshare.run(),
-    )
+    embassy_futures::join::join3(display_cmd_handler.run(), system_state_mgr.run(), async {
+        loop {
+            embassy_time::Timer::after_millis(5).await;
+            waveshare.render(&mut debug_pin).await;
+        }
+    })
     .await;
 }
 
