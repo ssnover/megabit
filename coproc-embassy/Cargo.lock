@@ -589,6 +589,7 @@ dependencies = [
  "cobs",
  "cortex-m",
  "cortex-m-rt",
+ "critical-section",
  "defmt",
  "defmt-rtt",
  "embassy-executor",

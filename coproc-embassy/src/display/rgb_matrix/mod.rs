@@ -6,42 +6,35 @@ use crate::{
     },
     usb::UsbResponder,
 };
-use core::future::Future;
 
 mod driver;
-pub use driver::{DotMatrix, COLUMNS, COLUMN_DATA_SIZE, ROWS};
+pub use driver::{DriverHandle, DriverPins, WaveshareDriver};
 
+pub const COLUMNS: usize = 64;
+pub const ROWS: usize = 32;
 pub const DISPLAY_CMD_QUEUE_SIZE: usize = 8;
 
-pub trait DotMatrixDriver<const COLUMN_DATA_SIZE: usize> {
-    type Error: core::fmt::Debug;
-
-    fn set_pixel(
-        &mut self,
-        row: usize,
-        col: usize,
-        state: bool,
-    ) -> impl Future<Output = Result<(), Self::Error>>;
-
-    fn update_row(
-        &mut self,
-        row: usize,
-        row_data: [u8; COLUMN_DATA_SIZE],
-    ) -> impl Future<Output = Result<(), Self::Error>>;
-}
-
-pub struct DisplayCommandHandler<D: DotMatrixDriver<COLUMN_DATA_SIZE>, R: UsbResponder + 'static> {
-    driver: D,
+pub struct DisplayCommandHandler<R: UsbResponder + 'static> {
     responder: &'static R,
     cmd_rx: DisplayCmdReceiver,
+    monocolor: u16,
+    driver: DriverHandle,
 }
 
-impl<D: DotMatrixDriver<COLUMN_DATA_SIZE>, R: UsbResponder + 'static> DisplayCommandHandler<D, R> {
-    pub fn new(driver: D, responder: &'static R, cmd_rx: DisplayCmdReceiver) -> Self {
+impl<R: UsbResponder + 'static> DisplayCommandHandler<R> {
+    pub fn new(
+        responder: &'static R,
+        cmd_rx: DisplayCmdReceiver,
+        (r, g, b): (u8, u8, u8),
+        driver: DriverHandle,
+    ) -> Self {
+        let monocolor =
+            (((r & 0xf8) as u16) << 7) | (((g & 0xf8) as u16) << 2) | ((b & 0xf8) as u16 >> 3);
         Self {
-            driver,
             responder,
             cmd_rx,
+            monocolor,
+            driver,
         }
     }
 
@@ -56,22 +49,19 @@ impl<D: DotMatrixDriver<COLUMN_DATA_SIZE>, R: UsbResponder + 'static> DisplayCom
         match cmd {
             DisplayCommand::UpdateSingleCell(UpdateSingleCell { row, col, value }) => {
                 self.driver
-                    .set_pixel(*row as usize, *col as usize, *value)
-                    .await
-                    .unwrap();
+                    .set_cell(*row, *col, if *value { self.monocolor } else { 0x00 });
                 let response_buf = [
                     set_single_cell_response::MAJOR,
                     set_single_cell_response::MINOR,
-                    0x00,
+                    0x01,
                 ];
                 self.responder.send(&response_buf).await.unwrap();
             }
-            DisplayCommand::RowUpdate(RowUpdate { row, row_data }) => {
-                self.driver
-                    .update_row(*row as usize, *row_data)
-                    .await
-                    .unwrap();
-                let response_buf = [update_row_response::MAJOR, update_row_response::MINOR, 0x00];
+            DisplayCommand::RowUpdate(RowUpdate {
+                row: _,
+                row_data: _,
+            }) => {
+                let response_buf = [update_row_response::MAJOR, update_row_response::MINOR, 0x01];
                 self.responder.send(&response_buf).await.unwrap();
             }
             DisplayCommand::RowUpdateRgb(RowUpdateRgb { row: _ }) => {
@@ -94,14 +84,14 @@ impl<D: DotMatrixDriver<COLUMN_DATA_SIZE>, R: UsbResponder + 'static> DisplayCom
                     .iter_mut()
                     .zip(((ROWS) as u32).to_be_bytes().into_iter())
                     .for_each(|(dst, src)| *dst = src);
-                response_buf[10] = 0x00; // false
+                response_buf[10] = 0x01; // true
                 self.responder.send(&response_buf).await.unwrap();
             }
             DisplayCommand::CommitRender => {
                 let response_buf = [
                     commit_render_response::MAJOR,
                     commit_render_response::MINOR,
-                    0x00,
+                    0x01,
                 ];
                 self.responder.send(&response_buf).await.unwrap();
             }

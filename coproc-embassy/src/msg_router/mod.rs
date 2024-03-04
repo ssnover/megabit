@@ -6,6 +6,8 @@ pub mod cmds;
 use cmds::*;
 pub mod display_cmd_router;
 use display_cmd_router::DisplayCmdRouter;
+pub mod system_cmd_router;
+use system_cmd_router::SystemCmdRouter;
 
 pub struct MessageRouter<
     D: embassy_usb_driver::Driver<'static> + 'static,
@@ -16,6 +18,7 @@ pub struct MessageRouter<
     cobs_decoder: CobsBuffer<'static, DECODE_BUFFER_SIZE>,
     responder: &'static R,
     display_router: DisplayCmdRouter,
+    system_router: SystemCmdRouter,
 }
 
 impl<
@@ -29,12 +32,14 @@ impl<
         cobs_decoder: CobsBuffer<'static, DECODE_BUFFER_SIZE>,
         responder: &'static R,
         display_router: DisplayCmdRouter,
+        system_router: SystemCmdRouter,
     ) -> Self {
         Self {
             class,
             cobs_decoder,
             responder,
             display_router,
+            system_router,
         }
     }
 
@@ -99,14 +104,24 @@ impl<
                 None
             }
             (request_commit_render::MAJOR, request_commit_render::MINOR, _) => {
-                unencoded_buf[0] = commit_render_response::MAJOR;
-                unencoded_buf[1] = commit_render_response::MINOR;
-                unencoded_buf[2] = 0x00;
-                Some(3)
+                self.display_router.handle_request_commit_render().await;
+                None
             }
             (set_single_cell::MAJOR, set_single_cell::MINOR, 5..) => {
                 self.display_router
                     .handle_update_single_cell(&incoming_buf[2..])
+                    .await;
+                None
+            }
+            (set_led_state::MAJOR, set_led_state::MINOR, 3..) => {
+                self.system_router
+                    .handle_set_led_state(&incoming_buf[2..])
+                    .await;
+                None
+            }
+            (set_rgb_state::MAJOR, set_rgb_state::MINOR, 5..) => {
+                self.system_router
+                    .handle_set_rgb_state(&incoming_buf[2..])
                     .await;
                 None
             }

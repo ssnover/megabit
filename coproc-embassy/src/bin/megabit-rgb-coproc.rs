@@ -1,20 +1,26 @@
 #![no_std]
 #![no_main]
 
+use core::cell::RefCell;
+
 use defmt_rtt as _;
 use embassy_nrf::{
     bind_interrupts,
     gpio::{Input, Level, Output, OutputDrive, Pin, Pull},
     peripherals,
     pwm::{Instance, Prescaler, SimplePwm},
-    spim,
     usb::{self, vbus_detect::HardwareVbusDetect},
     Peripheral,
 };
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Channel};
+use embassy_sync::{
+    blocking_mutex::{raw::NoopRawMutex, CriticalSectionMutex},
+    channel::Channel,
+};
 use megabit_coproc_embassy::{
     cobs_buffer::CobsBuffer,
-    display::{dot_matrix::DisplayCommandHandler, DotMatrix, DISPLAY_CMD_QUEUE_SIZE},
+    display::{
+        rgb_matrix::DisplayCommandHandler, WaveshareDriver, COLUMNS, DISPLAY_CMD_QUEUE_SIZE, ROWS,
+    },
     msg_router::{
         display_cmd_router::{DisplayCmdRouter, DisplayCommand},
         system_cmd_router::{SystemCmdRouter, SystemCommand},
@@ -28,11 +34,12 @@ use static_cell::StaticCell;
 
 bind_interrupts!(struct Irqs {
     POWER_CLOCK => usb::vbus_detect::InterruptHandler;
-    SPIM3 => spim::InterruptHandler<peripherals::SPI3>;
     USBD => usb::InterruptHandler<peripherals::USBD>;
 });
 
 type UsbDriver = usb::Driver<'static, peripherals::USBD, HardwareVbusDetect>;
+
+const DEFAULT_MONO_COLOR: (u8, u8, u8) = (0xff, 00, 00);
 
 const COBS_DECODE_BUFFER_SIZE: usize = 1024;
 const COBS_ENCODE_BUFFER_SIZE: usize = 256;
@@ -44,6 +51,8 @@ static SYSTEM_CMD_CHANNEL: StaticCell<Channel<NoopRawMutex, SystemCommand, SYSTE
 static COBS_DECODE_BUFFER: StaticCell<[u8; COBS_DECODE_BUFFER_SIZE]> = StaticCell::new();
 static COBS_ENCODE_BUFFER: StaticCell<[u8; COBS_ENCODE_BUFFER_SIZE]> = StaticCell::new();
 static USB_RESPONDER: StaticCell<Responder<UsbDriver, COBS_ENCODE_BUFFER_SIZE>> = StaticCell::new();
+static PIXEL_BUFFER_HANDLE: StaticCell<CriticalSectionMutex<RefCell<[u16; ROWS * COLUMNS]>>> =
+    StaticCell::new();
 
 #[embassy_executor::main]
 async fn main(spawner: embassy_executor::Spawner) {
@@ -57,7 +66,7 @@ async fn main(spawner: embassy_executor::Spawner) {
     let responder = USB_RESPONDER.init(responder);
 
     let display_cmd_channel = DISPLAY_CMD_CHANNEL.init(Channel::new());
-    let display_cmd_router = DisplayCmdRouter::new(display_cmd_channel.sender(), false);
+    let display_cmd_router = DisplayCmdRouter::new(display_cmd_channel.sender(), true);
     let system_cmd_channel = SYSTEM_CMD_CHANNEL.init(Channel::new());
     let system_cmd_router = SystemCmdRouter::new(system_cmd_channel.sender());
 
@@ -69,6 +78,26 @@ async fn main(spawner: embassy_executor::Spawner) {
         system_cmd_router,
     );
 
+    let pixel_buffer = PIXEL_BUFFER_HANDLE
+        .init_with(|| CriticalSectionMutex::new(RefCell::new([0u16; ROWS * COLUMNS])));
+
+    let r1 = Output::new(nrf_peripherals.P0_04, Level::Low, OutputDrive::Standard);
+    let g1 = Output::new(nrf_peripherals.P0_05, Level::Low, OutputDrive::Standard);
+    let b1 = Output::new(nrf_peripherals.P0_30, Level::Low, OutputDrive::Standard);
+    let r2 = Output::new(nrf_peripherals.P0_29, Level::Low, OutputDrive::Standard);
+    let g2 = Output::new(nrf_peripherals.P0_31, Level::Low, OutputDrive::Standard);
+    let b2 = Output::new(nrf_peripherals.P0_02, Level::Low, OutputDrive::Standard);
+    let a = Output::new(nrf_peripherals.P0_13, Level::Low, OutputDrive::Standard);
+    let b = Output::new(nrf_peripherals.P1_00, Level::Low, OutputDrive::Standard);
+    let c = Output::new(nrf_peripherals.P1_01, Level::Low, OutputDrive::Standard);
+    let d = Output::new(nrf_peripherals.P1_02, Level::Low, OutputDrive::Standard);
+    let clk = Output::new(nrf_peripherals.P0_21, Level::Low, OutputDrive::Standard);
+    let lat = Output::new(nrf_peripherals.P0_23, Level::Low, OutputDrive::Standard);
+    let oe = Output::new(nrf_peripherals.P1_14, Level::High, OutputDrive::Standard);
+    let driver_pins = (r1, g1, b1, r2, g2, b2, a, b, c, d, clk, lat, oe);
+    let mut waveshare = WaveshareDriver::new(driver_pins, pixel_buffer);
+    let driver_handle = waveshare.handle();
+
     let led_pin = Output::new(nrf_peripherals.P1_11, Level::Low, OutputDrive::Standard);
     let button_pin = UserButton::new(nrf_peripherals.P1_12);
     let pwm = NanoRgbLed::new(
@@ -78,23 +107,12 @@ async fn main(spawner: embassy_executor::Spawner) {
         nrf_peripherals.P0_16,
     );
 
-    let mut config = spim::Config::default();
-    config.frequency = spim::Frequency::M4;
-    config.mode = spim::MODE_0;
-
-    let spim = spim::Spim::new_txonly(
-        nrf_peripherals.SPI3,
-        Irqs,
-        nrf_peripherals.P0_13,
-        nrf_peripherals.P1_01,
-        config,
+    let mut display_cmd_handler = DisplayCommandHandler::new(
+        responder,
+        display_cmd_channel.receiver(),
+        DEFAULT_MONO_COLOR,
+        driver_handle,
     );
-    let ncs_0 = Output::new(nrf_peripherals.P0_27, Level::High, OutputDrive::Standard);
-    let ncs_1 = Output::new(nrf_peripherals.P0_21, Level::High, OutputDrive::Standard);
-    let dot_matrix = DotMatrix::new(spim, ncs_0, ncs_1).await.unwrap();
-
-    let mut display_cmd_handler =
-        DisplayCommandHandler::new(dot_matrix, responder, display_cmd_channel.receiver());
     let system_state_mgr = SystemStateManager::new(
         system_cmd_channel.receiver(),
         responder,
@@ -103,10 +121,17 @@ async fn main(spawner: embassy_executor::Spawner) {
         button_pin,
     );
 
+    // todo: See multiprio example once driver is introduced
     spawner.spawn(usb_driver_task(usb)).unwrap();
     spawner.spawn(msg_handler_task(router)).unwrap();
 
-    embassy_futures::join::join(display_cmd_handler.run(), system_state_mgr.run()).await;
+    //embassy_futures::join::join(display_cmd_handler.run(), system_state_mgr.run()).await;
+    embassy_futures::join::join3(
+        display_cmd_handler.run(),
+        system_state_mgr.run(),
+        waveshare.run(),
+    )
+    .await;
 }
 
 #[embassy_executor::task]
