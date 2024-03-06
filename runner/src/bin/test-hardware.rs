@@ -34,18 +34,15 @@ async fn main() -> anyhow::Result<()> {
         )
         .await;
 
-    for row in 0..16 {
-        for col in 0..32u8 {
-            serial_conn
-                .update_row(row, {
-                    let mut data = vec![false; 32];
-                    data[usize::from(col)] = true;
-                    data
-                })
-                .await?;
-            tokio::time::sleep(Duration::from_millis(33)).await;
+    let display_info = serial_conn.get_display_info().await.unwrap();
+
+    for row in 0..display_info.height as u8 {
+        for col in 0..display_info.width as u8 {
+            serial_conn.set_single_cell(row, col, true).await?;
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            serial_conn.set_single_cell(row, col, false).await?;
+            tokio::time::sleep(Duration::from_millis(100)).await;
         }
-        serial_conn.update_row(row, vec![false; 32]).await?;
     }
 
     for i in 0..100 {

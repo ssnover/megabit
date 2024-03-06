@@ -1,4 +1,4 @@
-use crate::display::DisplayCmdSender;
+use crate::display::{DisplayCmdSender, COLUMNS};
 
 pub enum DisplayCommand {
     UpdateSingleCell(UpdateSingleCell),
@@ -16,7 +16,7 @@ pub struct UpdateSingleCell {
 
 pub struct RowUpdate {
     pub row: u8,
-    pub row_data: [u8; 4],
+    pub row_data: [u8; COLUMNS / 8],
 }
 
 pub struct RowUpdateRgb {
@@ -52,7 +52,7 @@ impl DisplayCmdRouter {
     pub async fn handle_row_update(&self, payload: &[u8]) {
         let row = payload[0];
         let _row_data_len = payload[1];
-        let mut row_data = [0u8; 4];
+        let mut row_data = [0u8; COLUMNS / 8];
         row_data
             .iter_mut()
             .zip(&payload[2..])

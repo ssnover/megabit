@@ -43,6 +43,7 @@ static SYSTEM_CMD_CHANNEL: StaticCell<Channel<NoopRawMutex, SystemCommand, SYSTE
     StaticCell::new();
 static COBS_DECODE_BUFFER: StaticCell<[u8; COBS_DECODE_BUFFER_SIZE]> = StaticCell::new();
 static COBS_ENCODE_BUFFER: StaticCell<[u8; COBS_ENCODE_BUFFER_SIZE]> = StaticCell::new();
+static MESSAGE_BUFFER: StaticCell<[u8; COBS_DECODE_BUFFER_SIZE]> = StaticCell::new();
 static USB_RESPONDER: StaticCell<Responder<UsbDriver, COBS_ENCODE_BUFFER_SIZE>> = StaticCell::new();
 
 #[embassy_executor::main]
@@ -63,6 +64,7 @@ async fn main(spawner: embassy_executor::Spawner) {
 
     let router = MessageRouter::new(
         receiver,
+        MESSAGE_BUFFER.init_with(|| [0; COBS_DECODE_BUFFER_SIZE]),
         CobsBuffer::new(COBS_DECODE_BUFFER.init_with(|| [0; COBS_DECODE_BUFFER_SIZE])),
         responder,
         display_cmd_router,

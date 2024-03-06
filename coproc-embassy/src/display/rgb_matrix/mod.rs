@@ -48,24 +48,39 @@ impl<R: UsbResponder + 'static> DisplayCommandHandler<R> {
     async fn handle_cmd(&mut self, cmd: &DisplayCommand) {
         match cmd {
             DisplayCommand::UpdateSingleCell(UpdateSingleCell { row, col, value }) => {
-                self.driver
-                    .set_cell(*row, *col, if *value { self.monocolor } else { 0x00 })
-                    .await;
+                let status = if (*row as usize) < ROWS && (*col as usize) < COLUMNS {
+                    self.driver
+                        .set_cell(*row, *col, if *value { self.monocolor } else { 0x00 })
+                        .await;
+                    0x00
+                } else {
+                    0x01
+                };
                 let response_buf = [
                     set_single_cell_response::MAJOR,
                     set_single_cell_response::MINOR,
-                    0x00,
+                    status,
                 ];
                 self.responder.send(&response_buf).await.unwrap();
             }
-            DisplayCommand::RowUpdate(RowUpdate {
-                row: _,
-                row_data: _,
-            }) => {
-                let response_buf = [update_row_response::MAJOR, update_row_response::MINOR, 0x01];
+            DisplayCommand::RowUpdate(RowUpdate { row, row_data }) => {
+                let status = if (*row as usize) < ROWS {
+                    self.driver
+                        .update_row(*row, self.monocolor, &row_data[..])
+                        .await;
+                    0x00
+                } else {
+                    0x01
+                };
+                let response_buf = [
+                    update_row_response::MAJOR,
+                    update_row_response::MINOR,
+                    status,
+                ];
                 self.responder.send(&response_buf).await.unwrap();
             }
             DisplayCommand::RowUpdateRgb(RowUpdateRgb { row: _ }) => {
+                // todo: Need to create a slotted buffer for this data to reduce copies
                 let response_buf = [
                     update_row_rgb_response::MAJOR,
                     update_row_rgb_response::MINOR,
@@ -92,7 +107,7 @@ impl<R: UsbResponder + 'static> DisplayCommandHandler<R> {
                 let response_buf = [
                     commit_render_response::MAJOR,
                     commit_render_response::MINOR,
-                    0x01,
+                    0x00,
                 ];
                 self.responder.send(&response_buf).await.unwrap();
             }

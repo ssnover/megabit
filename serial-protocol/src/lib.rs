@@ -16,6 +16,8 @@ pub enum SerialMessage {
     UpdateRowResponse(UpdateRowResponse),
     UpdateRowRgb(UpdateRowRgb),
     UpdateRowRgbResponse(UpdateRowRgbResponse),
+    SetSingleCell(SetSingleCell),
+    SetSingleCellResponse(SetSingleCellResponse),
     Ping,
     PingResponse,
 }
@@ -62,6 +64,16 @@ impl SerialMessage {
             SerialMessage::CommitRenderResponse(inner) => {
                 out.push(0xa0);
                 out.push(0x07);
+                out.append(&mut inner.to_bytes())
+            }
+            SerialMessage::SetSingleCell(inner) => {
+                out.push(0xa0);
+                out.push(0x50);
+                out.append(&mut inner.to_bytes())
+            }
+            SerialMessage::SetSingleCellResponse(inner) => {
+                out.push(0xa0);
+                out.push(0x51);
                 out.append(&mut inner.to_bytes())
             }
             SerialMessage::SetLedState(inner) => {
@@ -127,6 +139,12 @@ impl SerialMessage {
                 )),
                 (0xa0, 0x07) => Ok(SerialMessage::CommitRenderResponse(
                     CommitRenderResponse::try_from_bytes(&data[2..])?,
+                )),
+                (0xa0, 0x50) => Ok(SerialMessage::SetSingleCell(SetSingleCell::try_from_bytes(
+                    &data[2..],
+                )?)),
+                (0xa0, 0x51) => Ok(SerialMessage::SetSingleCellResponse(
+                    SetSingleCellResponse::try_from_bytes(&data[2..])?,
                 )),
                 (0xde, 0x00) => Ok(SerialMessage::SetLedState(SetLedState::try_from_bytes(
                     &data[2..],
@@ -502,6 +520,52 @@ impl CommitRenderResponse {
     pub fn try_from_bytes(data: &[u8]) -> io::Result<Self> {
         if data.len() == 1 {
             Ok(CommitRenderResponse {
+                status: Status::try_from(data[0])?,
+            })
+        } else {
+            Err(io::ErrorKind::InvalidData.into())
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SetSingleCell {
+    pub row: u8,
+    pub col: u8,
+    pub value: bool,
+}
+
+impl SetSingleCell {
+    pub fn to_bytes(self) -> Vec<u8> {
+        vec![self.row, self.col, if self.value { 0x01 } else { 0x00 }]
+    }
+
+    pub fn try_from_bytes(data: &[u8]) -> io::Result<Self> {
+        if data.len() == 3 {
+            Ok(SetSingleCell {
+                row: data[0],
+                col: data[1],
+                value: data[2] != 0x00,
+            })
+        } else {
+            Err(io::ErrorKind::InvalidData.into())
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SetSingleCellResponse {
+    pub status: Status,
+}
+
+impl SetSingleCellResponse {
+    pub fn to_bytes(self) -> Vec<u8> {
+        vec![self.status.into()]
+    }
+
+    pub fn try_from_bytes(data: &[u8]) -> io::Result<Self> {
+        if data.len() == 1 {
+            Ok(SetSingleCellResponse {
                 status: Status::try_from(data[0])?,
             })
         } else {

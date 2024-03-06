@@ -159,10 +159,11 @@ impl<PINS: DriverPins> WaveshareDriver<PINS> {
     pub async fn render(&mut self, timing_pin: &mut impl OutputPin) {
         let pixel_data = self.pixel_data.lock().await;
         let pixel_data = pixel_data.borrow();
-        for pwm_step in 0..(1u8 << 5) {
+        for pwm_step in 0..(1u8 << 4) {
+            let pwm_step = pwm_step << 1;
             for row in 0..(ROWS / 2) {
+                timing_pin.set_low().unwrap();
                 for idx in (row * COLUMNS)..((row + 1) * COLUMNS) {
-                    timing_pin.set_low().unwrap();
                     let idx2 = idx + pixel_data.len() / 2;
                     let (r1, g1, b1) = channels(pixel_data[idx]);
                     let (r2, g2, b2) = channels(pixel_data[idx2]);
@@ -174,14 +175,15 @@ impl<PINS: DriverPins> WaveshareDriver<PINS> {
                     self.pins.b2().set_state((b2 > pwm_step).into()).unwrap();
 
                     self.pins.clk().set_high().unwrap();
+                    cortex_m::asm::delay(1);
                     self.pins.clk().set_low().unwrap();
-                    timing_pin.set_high().unwrap();
                 }
+                timing_pin.set_high().unwrap();
 
                 self.pins.oe().set_high().unwrap();
-                Timer::after_micros(2).await;
+                cortex_m::asm::delay(50);
                 self.pins.lat().set_low().unwrap();
-                Timer::after_micros(2).await;
+                cortex_m::asm::delay(50);
                 self.pins.lat().set_high().unwrap();
 
                 // set the address
@@ -202,7 +204,7 @@ impl<PINS: DriverPins> WaveshareDriver<PINS> {
                     .d()
                     .set_state(((addr & (1 << 3)) != 0).into())
                     .unwrap();
-                Timer::after_micros(2).await;
+                cortex_m::asm::delay(50);
                 self.pins.oe().set_low().unwrap();
             }
         }
@@ -232,5 +234,33 @@ impl DriverHandle {
         let pixel_data = self.pixel_data.lock().await;
         let mut pixel_data = pixel_data.borrow_mut();
         pixel_data[idx] = value;
+    }
+
+    pub async fn update_row(&mut self, row: u8, on_value: u16, values: &[u8]) {
+        let start_idx = COLUMNS * row as usize;
+        let pixel_data = self.pixel_data.lock().await;
+        let mut pixel_data = pixel_data.borrow_mut();
+        (0..(8 * values.len()))
+            .into_iter()
+            .zip(pixel_data[start_idx..(start_idx + COLUMNS)].iter_mut())
+            .for_each(|(idx, dst)| {
+                let byte_idx = idx / 8;
+                let bit_idx = idx & 0b111;
+                *dst = if (values[byte_idx] & (1 << bit_idx)) != 0 {
+                    on_value
+                } else {
+                    0
+                };
+            });
+    }
+
+    pub async fn update_row_rgb(&mut self, row: u8, values: &[u16]) {
+        let start_idx = COLUMNS * row as usize;
+        let pixel_data = self.pixel_data.lock().await;
+        let mut pixel_data = pixel_data.borrow_mut();
+        pixel_data[start_idx..]
+            .iter_mut()
+            .zip(values.iter())
+            .for_each(|(dst, src)| *dst = *src)
     }
 }

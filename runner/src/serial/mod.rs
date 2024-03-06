@@ -222,6 +222,31 @@ impl SerialConnection {
             None => Err(io::ErrorKind::ConnectionAborted.into()),
         }
     }
+
+    pub async fn set_single_cell(
+        &self,
+        row: u8,
+        col: u8,
+        value: bool,
+    ) -> io::Result<SetSingleCellResponse> {
+        self.send_message(SerialMessage::SetSingleCell(SetSingleCell {
+            row,
+            col,
+            value,
+        }))
+        .await?;
+        let msg = self
+            .wait_for_message(
+                Box::new(|msg| matches!(msg, &SerialMessage::SetSingleCellResponse(_))),
+                None,
+            )
+            .await;
+        match msg {
+            Some(SerialMessage::SetSingleCellResponse(response)) => Ok(response),
+            Some(_) => unreachable!(),
+            None => Err(io::ErrorKind::ConnectionAborted.into()),
+        }
+    }
 }
 
 #[derive(Clone)]
