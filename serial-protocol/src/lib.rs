@@ -18,6 +18,8 @@ pub enum SerialMessage {
     UpdateRowRgbResponse(UpdateRowRgbResponse),
     SetSingleCell(SetSingleCell),
     SetSingleCellResponse(SetSingleCellResponse),
+    SetMonocolorPalette(SetMonocolorPalette),
+    SetMonocolorPaletteResponse(SetMonocolorPaletteResponse),
     Ping,
     PingResponse,
 }
@@ -64,6 +66,16 @@ impl SerialMessage {
             SerialMessage::CommitRenderResponse(inner) => {
                 out.push(0xa0);
                 out.push(0x07);
+                out.append(&mut inner.to_bytes())
+            }
+            SerialMessage::SetMonocolorPalette(inner) => {
+                out.push(0xa0);
+                out.push(0x08);
+                out.append(&mut inner.to_bytes())
+            }
+            SerialMessage::SetMonocolorPaletteResponse(inner) => {
+                out.push(0xa0);
+                out.push(0x09);
                 out.append(&mut inner.to_bytes())
             }
             SerialMessage::SetSingleCell(inner) => {
@@ -139,6 +151,12 @@ impl SerialMessage {
                 )),
                 (0xa0, 0x07) => Ok(SerialMessage::CommitRenderResponse(
                     CommitRenderResponse::try_from_bytes(&data[2..])?,
+                )),
+                (0xa0, 0x08) => Ok(SerialMessage::SetMonocolorPalette(
+                    SetMonocolorPalette::try_from_bytes(&data[2..])?,
+                )),
+                (0xa0, 0x09) => Ok(SerialMessage::SetMonocolorPaletteResponse(
+                    SetMonocolorPaletteResponse::try_from_bytes(&data[2..])?,
                 )),
                 (0xa0, 0x50) => Ok(SerialMessage::SetSingleCell(SetSingleCell::try_from_bytes(
                     &data[2..],
@@ -566,6 +584,48 @@ impl SetSingleCellResponse {
     pub fn try_from_bytes(data: &[u8]) -> io::Result<Self> {
         if data.len() == 1 {
             Ok(SetSingleCellResponse {
+                status: Status::try_from(data[0])?,
+            })
+        } else {
+            Err(io::ErrorKind::InvalidData.into())
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SetMonocolorPalette {
+    pub color: u16,
+}
+
+impl SetMonocolorPalette {
+    pub fn to_bytes(self) -> Vec<u8> {
+        Vec::from(self.color.to_be_bytes())
+    }
+
+    pub fn try_from_bytes(data: &[u8]) -> io::Result<Self> {
+        if data.len() == 2 {
+            Ok(Self {
+                color: u16::from_be_bytes([data[0], data[1]]),
+            })
+        } else {
+            Err(io::ErrorKind::InvalidData.into())
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SetMonocolorPaletteResponse {
+    pub status: Status,
+}
+
+impl SetMonocolorPaletteResponse {
+    pub fn to_bytes(self) -> Vec<u8> {
+        vec![self.status.into()]
+    }
+
+    pub fn try_from_bytes(data: &[u8]) -> io::Result<Self> {
+        if data.len() == 1 {
+            Ok(Self {
                 status: Status::try_from(data[0])?,
             })
         } else {

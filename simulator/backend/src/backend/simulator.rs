@@ -186,6 +186,20 @@ async fn handle_serial_message(
                 )
                 .await?;
         }
+        SerialMessage::SetMonocolorPalette(SetMonocolorPalette { color }) => {
+            {
+                let mut display_buf = display_buffer.lock().unwrap();
+                display_buf.set_monocolor_palette(color);
+            }
+            to_serial
+                .send(
+                    SerialMessage::SetMonocolorPaletteResponse(SetMonocolorPaletteResponse {
+                        status: Status::Success,
+                    })
+                    .to_bytes(),
+                )
+                .await?;
+        }
         m => tracing::debug!("Unhandled message received: {}", m.as_ref()),
     }
 
@@ -202,22 +216,34 @@ async fn handle_update_row(
 ) -> Status {
     if usize::from((row_data_len / 8) + if row_data_len % 8 == 0 { 0 } else { 1 }) == row_data.len()
     {
+        let pixel_states = row_data
+            .into_iter()
+            .map(|byte| {
+                (0..8)
+                    .into_iter()
+                    .map(move |bit| (byte & (1 << bit)) != 0x00)
+            })
+            .flatten()
+            .collect::<Vec<bool>>();
+        let monocolor = {
+            let mut display_buffer = display_buffer.lock().unwrap();
+            display_buffer.update_row(row_number, pixel_states.clone());
+            display_buffer.get_monocolor()
+        };
         if display_cfg.is_rgb {
-            Status::Failure
-        } else {
-            let pixel_states = row_data
-                .into_iter()
-                .map(|byte| {
-                    (0..8)
-                        .into_iter()
-                        .map(move |bit| (byte & (1 << bit)) != 0x00)
-                })
-                .flatten()
-                .collect::<Vec<bool>>();
-            {
-                let mut display_buffer = display_buffer.lock().unwrap();
-                display_buffer.update_row(row_number, pixel_states.clone());
+            if let Ok(msg) = rmp_serde::to_vec(&SimMessage::SetMatrixRowRgb(SetMatrixRowRgb {
+                row: usize::from(row_number),
+                data: pixel_states
+                    .into_iter()
+                    .map(|state| if state { monocolor } else { 0 })
+                    .collect(),
+            })) {
+                let _ = to_ws.send(msg).await;
+                Status::Success
+            } else {
+                Status::Failure
             }
+        } else {
             if let Ok(msg) = rmp_serde::to_vec(&SimMessage::SetMatrixRow(SetMatrixRow {
                 row: usize::from(row_number),
                 data: pixel_states,
