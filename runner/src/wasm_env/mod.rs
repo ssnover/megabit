@@ -1,6 +1,6 @@
 use self::host_functions::with_host_functions;
 use crate::{
-    display::{DisplayConfiguration, ScreenBuffer, DEFAULT_MONO_PALETTE},
+    display::{DisplayConfiguration, ScreenBuffer},
     serial::SyncSerialConnection,
 };
 use app_manifest::AppManifest;
@@ -22,11 +22,8 @@ impl PersistentData {
         let screen_buffer = Rc::new(RefCell::new(ScreenBuffer::new(
             display_cfg.width,
             display_cfg.height,
-            if display_cfg.is_rgb {
-                Some(DEFAULT_MONO_PALETTE)
-            } else {
-                None
-            },
+            display_cfg.is_rgb,
+            None,
         )));
         let kv_store = Rc::new(RefCell::new(BTreeMap::new()));
 

@@ -118,7 +118,8 @@ extism::host_fn!(pub set_monocolor_palette(user_data: PersistentData; on_color: 
     let data = user_data.get()?;
     let data = data.lock().unwrap();
     let mut screen_buffer = data.screen_buffer.borrow_mut();
-    display::set_monocolor_palette(&mut screen_buffer, (on_color & 0xffff) as u16, (off_color & 0xffff) as u16)
+    let serial_conn = data.serial_conn.clone();
+    display::set_monocolor_palette(&mut screen_buffer, serial_conn, (on_color & 0xffff) as u16, (off_color & 0xffff) as u16)
 });
 
 extism::host_fn!(pub get_display_info(user_data: PersistentData;) -> Vec<u8> {
@@ -126,7 +127,11 @@ extism::host_fn!(pub get_display_info(user_data: PersistentData;) -> Vec<u8> {
     let data = data.lock().unwrap();
     let screen_buffer = data.screen_buffer.borrow();
     let config = display::get_display_info(&screen_buffer)?;
-    Ok([&(config.width as u32).to_be_bytes()[..], &(config.height as u32).to_be_bytes()[..], &(if config.is_rgb { 1u8 } else {0u8 }).to_be_bytes()[..]].concat())
+    Ok([
+        &(config.width as u32).to_be_bytes()[..],
+        &(config.height as u32).to_be_bytes()[..],
+        &(if config.is_rgb { 1u8 } else {0u8 }).to_be_bytes()[..]].concat()
+    )
 });
 
 extism::host_fn!(pub kv_store_read(user_data: PersistentData; key: String) -> Vec<u8> {

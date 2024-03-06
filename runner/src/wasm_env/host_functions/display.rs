@@ -69,10 +69,13 @@ pub fn render(
 
 pub fn set_monocolor_palette(
     screen_buffer: &mut ScreenBuffer,
+    serial_conn: SyncSerialConnection,
     on_color: u16,
     off_color: u16,
 ) -> Result<(), extism::Error> {
     screen_buffer.set_palette(MonocolorPalette::new(on_color, off_color))?;
+    serial_conn.set_monocolor_palette(on_color)?;
+
     Ok(())
 }
 

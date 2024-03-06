@@ -247,6 +247,27 @@ impl SerialConnection {
             None => Err(io::ErrorKind::ConnectionAborted.into()),
         }
     }
+
+    pub async fn set_monocolor_palette(
+        &self,
+        color: u16,
+    ) -> io::Result<SetMonocolorPaletteResponse> {
+        self.send_message(SerialMessage::SetMonocolorPalette(SetMonocolorPalette {
+            color,
+        }))
+        .await?;
+        let msg = self
+            .wait_for_message(
+                Box::new(|msg| matches!(msg, &SerialMessage::SetMonocolorPaletteResponse(_))),
+                None,
+            )
+            .await;
+        match msg {
+            Some(SerialMessage::SetMonocolorPaletteResponse(response)) => Ok(response),
+            Some(_) => unreachable!(),
+            None => Err(io::ErrorKind::ConnectionAborted.into()),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -278,18 +299,16 @@ impl SyncSerialConnection {
     }
 
     pub fn set_led_state(&self, new_state: bool) -> io::Result<SetLedStateResponse> {
-        self.rt
-            .block_on(async { self.inner.set_led_state(new_state).await })
+        self.rt.block_on(self.inner.set_led_state(new_state))
     }
 
     pub fn set_rgb_state(&self, (r, g, b): (u8, u8, u8)) -> io::Result<SetRgbStateResponse> {
-        self.rt
-            .block_on(async { self.inner.set_rgb_state((r, g, b)).await })
+        self.rt.block_on(self.inner.set_rgb_state((r, g, b)))
     }
 
     pub fn update_row(&self, row_number: u8, row_data: Vec<bool>) -> io::Result<UpdateRowResponse> {
         self.rt
-            .block_on(async { self.inner.update_row(row_number, row_data).await })
+            .block_on(self.inner.update_row(row_number, row_data))
     }
 
     pub fn update_row_rgb(
@@ -298,16 +317,19 @@ impl SyncSerialConnection {
         row_data: Vec<u16>,
     ) -> io::Result<UpdateRowRgbResponse> {
         self.rt
-            .block_on(async { self.inner.update_row_rgb(row_number, row_data).await })
+            .block_on(self.inner.update_row_rgb(row_number, row_data))
     }
 
     pub fn get_display_info(&self) -> io::Result<GetDisplayInfoResponse> {
-        self.rt
-            .block_on(async { self.inner.get_display_info().await })
+        self.rt.block_on(self.inner.get_display_info())
     }
 
     pub fn commit_render(&self) -> io::Result<CommitRenderResponse> {
-        self.rt.block_on(async { self.inner.commit_render().await })
+        self.rt.block_on(self.inner.commit_render())
+    }
+
+    pub fn set_monocolor_palette(&self, color: u16) -> io::Result<SetMonocolorPaletteResponse> {
+        self.rt.block_on(self.inner.set_monocolor_palette(color))
     }
 }
 

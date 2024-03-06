@@ -41,14 +41,24 @@ impl MonocolorPalette {
 #[derive(Debug, Clone)]
 pub enum ScreenBufferKind {
     Monocolor(Vec<bool>),
-    Rgb555(Vec<u16>, MonocolorPalette),
+    RgbMonocolor(Vec<bool>, MonocolorPalette),
+    Rgb555(Vec<u16>),
 }
 
 impl ScreenBuffer {
-    pub fn new(width: usize, height: usize, rgb_monocolor: Option<MonocolorPalette>) -> Self {
+    pub fn new(
+        width: usize,
+        height: usize,
+        is_rgb: bool,
+        rgb_monocolor: Option<MonocolorPalette>,
+    ) -> Self {
         ScreenBuffer {
-            buffer: if let Some(palette) = rgb_monocolor {
-                ScreenBufferKind::Rgb555(vec![0u16; width * height], palette)
+            buffer: if is_rgb {
+                if let Some(palette) = rgb_monocolor {
+                    ScreenBufferKind::RgbMonocolor(vec![false; width * height], palette)
+                } else {
+                    ScreenBufferKind::Rgb555(vec![0u16; width * height])
+                }
             } else {
                 ScreenBufferKind::Monocolor(vec![false; width * height])
             },
@@ -59,7 +69,10 @@ impl ScreenBuffer {
     }
 
     pub fn is_rgb(&self) -> bool {
-        matches!(self.buffer, ScreenBufferKind::Rgb555(_, _))
+        matches!(
+            self.buffer,
+            ScreenBufferKind::Rgb555(_) | ScreenBufferKind::RgbMonocolor(_, _)
+        )
     }
 
     pub fn display_config(&self) -> DisplayConfiguration {
@@ -71,8 +84,9 @@ impl ScreenBuffer {
     }
 
     pub fn set_palette(&mut self, palette: MonocolorPalette) -> io::Result<()> {
-        if let ScreenBufferKind::Rgb555(_, current_palette) = &mut self.buffer {
-            *current_palette = palette;
+        if let ScreenBufferKind::Rgb555(buffer) = &mut self.buffer {
+            let buffer = buffer.into_iter().map(|value| *value != 0x00).collect();
+            self.buffer = ScreenBufferKind::RgbMonocolor(buffer, palette);
             Ok(())
         } else {
             Err(io::ErrorKind::InvalidData.into())
@@ -92,12 +106,14 @@ impl ScreenBuffer {
                 }
                 buffer[index] = value;
             }
-            ScreenBufferKind::Rgb555(ref mut buffer, palette) => {
-                let value = if value { palette.on } else { palette.off };
+            ScreenBufferKind::RgbMonocolor(ref mut buffer, _) => {
                 if buffer[index] != value {
                     self.dirty_row_buffer[row] = true;
                 }
                 buffer[index] = value;
+            }
+            ScreenBufferKind::Rgb555(_) => {
+                return Err(io::ErrorKind::InvalidData.into());
             }
         }
 
@@ -111,14 +127,16 @@ impl ScreenBuffer {
 
         let index = row * self.width + col;
         match &mut self.buffer {
-            ScreenBufferKind::Rgb555(ref mut buffer, _) => {
+            ScreenBufferKind::Rgb555(ref mut buffer) => {
                 if buffer[index] != value {
                     self.dirty_row_buffer[row] = true;
                 }
                 buffer[index] = value;
                 Ok(())
             }
-            ScreenBufferKind::Monocolor(_) => Err(io::ErrorKind::InvalidData.into()),
+            ScreenBufferKind::RgbMonocolor(_, _) | ScreenBufferKind::Monocolor(_) => {
+                Err(io::ErrorKind::InvalidData.into())
+            }
         }
     }
 
@@ -128,7 +146,7 @@ impl ScreenBuffer {
         }
 
         match &self.buffer {
-            ScreenBufferKind::Monocolor(buffer) => {
+            ScreenBufferKind::Monocolor(buffer) | ScreenBufferKind::RgbMonocolor(buffer, _) => {
                 let start_idx = row_number * self.width;
                 let end_idx = (row_number + 1) * self.width;
                 Ok((
@@ -136,7 +154,7 @@ impl ScreenBuffer {
                     self.dirty_row_buffer[row_number],
                 ))
             }
-            ScreenBufferKind::Rgb555(_, _) => Err(io::ErrorKind::InvalidData.into()),
+            ScreenBufferKind::Rgb555(_) => Err(io::ErrorKind::InvalidData.into()),
         }
     }
 
@@ -146,11 +164,22 @@ impl ScreenBuffer {
         }
 
         match &self.buffer {
-            ScreenBufferKind::Rgb555(buffer, _) => {
+            ScreenBufferKind::Rgb555(buffer) => {
                 let start_idx = row_number * self.width;
-                let end_idx = (row_number + 1) * self.width;
+                let end_idx = start_idx + self.width;
                 Ok((
                     Vec::from(&buffer[start_idx..end_idx]),
+                    self.dirty_row_buffer[row_number],
+                ))
+            }
+            ScreenBufferKind::RgbMonocolor(buffer, palette) => {
+                let start_idx = row_number * self.width;
+                let end_idx = start_idx + self.width;
+                Ok((
+                    buffer[start_idx..end_idx]
+                        .iter()
+                        .map(|on| if *on { palette.on } else { palette.off })
+                        .collect(),
                     self.dirty_row_buffer[row_number],
                 ))
             }
