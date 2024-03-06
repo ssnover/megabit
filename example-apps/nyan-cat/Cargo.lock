@@ -208,8 +208,18 @@ dependencies = [
  "embedded-graphics",
  "extism-pdk",
  "log",
+ "megabit-wasm-macro",
  "rmp-serde",
  "serde",
+]
+
+[[package]]
+name = "megabit-wasm-macro"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

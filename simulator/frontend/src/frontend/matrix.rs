@@ -27,14 +27,6 @@ pub fn canvas(props: &CanvasProperties) -> Html {
             if *is_first_render {
                 is_first_render.set(false);
                 let canvas = canvas.clone();
-
-                display_size_handle
-                    .set((canvas.client_width() as u32, canvas.client_height() as u32));
-
-                size_listen_event_state.set(EventListener::new(&window(), "resize", move |_| {
-                    display_size_handle
-                        .set((canvas.client_width() as u32, canvas.client_height() as u32));
-                }))
             }
 
             renderer.emit(canvas);
@@ -48,7 +40,7 @@ pub fn canvas(props: &CanvasProperties) -> Html {
             width={display_size.clone().deref().0.to_string()}
             height={display_size.deref().1.to_string()}
             ref={node_ref}
-            style="background-color: #000000"
+            style="background-color: #000000; padding: 10px;"
         >
         </canvas>
     }

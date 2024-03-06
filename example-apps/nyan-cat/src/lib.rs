@@ -2,7 +2,7 @@ use embedded_graphics::{draw_target::DrawTarget, geometry::Point, Pixel};
 use extism_pdk::*;
 use megabit_app_sdk::{
     display::{self, render, write_region_rgb, Color, RgbBuffer},
-    kv_store,
+    megabit_wasm_app, MegabitApp,
 };
 use png::ColorType;
 use std::io::BufReader;
@@ -75,60 +75,70 @@ mod frames {
     ];
 }
 
-mod vars {
-    pub const FRAME_NUMBER: &str = "FRAME";
+#[megabit_wasm_app]
+struct NyanCat {
+    frames: [Vec<Pixel<Color>>; 12],
+    frame_number: usize,
+    width: usize,
+    height: usize,
 }
 
-#[plugin_fn]
-pub fn setup() -> FnResult<()> {
-    kv_store::write(vars::FRAME_NUMBER, 0)?;
+impl MegabitApp for NyanCat {
+    fn setup(display_cfg: display::DisplayConfiguration) -> FnResult<Self> {
+        Ok(NyanCat {
+            frames: frames::ALL
+                .into_iter()
+                .map(|frame| {
+                    let current_frame = BufReader::new(frame);
+                    let decoder = png::Decoder::new(current_frame);
+                    let mut reader = decoder.read_info().unwrap();
 
-    Ok(())
-}
+                    let mut buf = vec![0; reader.output_buffer_size()];
+                    let info = reader.next_frame(&mut buf).unwrap();
+                    let image_bytes = &buf[..info.buffer_size()];
+                    assert!(matches!(info.color_type, ColorType::Indexed));
+                    assert!(!reader.info().interlaced);
+                    let palette = reader.info().palette.as_ref().unwrap();
+                    image_bytes
+                        .into_iter()
+                        .enumerate()
+                        .map(|(idx, byte)| [(2 * idx, *byte >> 4), ((2 * idx) + 1, *byte & 0xf)])
+                        .flatten()
+                        .map(|(idx, pixel)| {
+                            Pixel(
+                                Point::new(
+                                    (idx % display_cfg.width) as i32,
+                                    (idx / display_cfg.width) as i32,
+                                ),
+                                from_palette(pixel, palette).unwrap(),
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap(),
+            frame_number: 0,
+            width: display_cfg.width,
+            height: display_cfg.height,
+        })
+    }
 
-#[plugin_fn]
-pub fn run() -> FnResult<()> {
-    let frame_number: u32 = kv_store::read(vars::FRAME_NUMBER).unwrap().unwrap_or(0);
-    let current_frame = BufReader::new(frames::ALL[frame_number as usize]);
-    let decoder = png::Decoder::new(current_frame);
-    let mut reader = decoder.read_info().unwrap();
+    fn run(&mut self) -> FnResult<()> {
+        let mut display_buffer = RgbBuffer::new(self.width, self.height);
+        let _ = display_buffer.draw_iter(self.frames[self.frame_number].clone());
 
-    let mut buf = vec![0; reader.output_buffer_size()];
-    let info = reader.next_frame(&mut buf).unwrap();
-    let image_bytes = &buf[..info.buffer_size()];
-    assert!(matches!(info.color_type, ColorType::Indexed));
-    assert!(!reader.info().interlaced);
-    let palette = reader.info().palette.as_ref().unwrap();
+        write_region_rgb(
+            (0, 0),
+            (self.width as u32, self.height as u32),
+            Vec::from(display_buffer.get_data()),
+        )?;
+        render(0..self.height as u8)?;
 
-    let display_cfg = display::get_display_info()?;
-    let mut display_buffer = RgbBuffer::new(display_cfg.width, display_cfg.height);
-    let _ = display_buffer.draw_iter(
-        image_bytes
-            .into_iter()
-            .enumerate()
-            .map(|(idx, byte)| [(2 * idx, *byte >> 4), ((2 * idx) + 1, *byte & 0xf)])
-            .flatten()
-            .map(|(idx, pixel)| {
-                Pixel(
-                    Point::new(
-                        (idx % display_cfg.width) as i32,
-                        (idx / display_cfg.width) as i32,
-                    ),
-                    from_palette(pixel, palette).unwrap(),
-                )
-            }),
-    );
+        self.frame_number = (self.frame_number + 1) % frames::ALL.len();
 
-    write_region_rgb(
-        (0, 0),
-        (display_cfg.width as u32, display_cfg.height as u32),
-        Vec::from(display_buffer.get_data()),
-    )?;
-    render(0..display_cfg.height as u8)?;
-
-    kv_store::write(vars::FRAME_NUMBER, (frame_number + 1) % 12)?;
-
-    Ok(())
+        Ok(())
+    }
 }
 
 fn from_palette(index: u8, palette: &[u8]) -> Option<Color> {

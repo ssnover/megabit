@@ -1,7 +1,6 @@
 use rand::prelude::*;
-use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct BoardState {
     pub state: Vec<u8>,
     pub height: usize,

@@ -69,10 +69,7 @@ impl ScreenBuffer {
     }
 
     pub fn is_rgb(&self) -> bool {
-        matches!(
-            self.buffer,
-            ScreenBufferKind::Rgb555(_) | ScreenBufferKind::RgbMonocolor(_, _)
-        )
+        matches!(self.buffer, ScreenBufferKind::Rgb555(_))
     }
 
     pub fn display_config(&self) -> DisplayConfiguration {
@@ -84,13 +81,21 @@ impl ScreenBuffer {
     }
 
     pub fn set_palette(&mut self, palette: MonocolorPalette) -> io::Result<()> {
-        if let ScreenBufferKind::Rgb555(buffer) = &mut self.buffer {
-            let buffer = buffer.into_iter().map(|value| *value != 0x00).collect();
-            self.buffer = ScreenBufferKind::RgbMonocolor(buffer, palette);
-            Ok(())
-        } else {
-            Err(io::ErrorKind::InvalidData.into())
+        match &mut self.buffer {
+            ScreenBufferKind::Rgb555(buffer) => {
+                let buffer = buffer.into_iter().map(|value| *value != 0x00).collect();
+                self.buffer = ScreenBufferKind::RgbMonocolor(buffer, palette);
+                Ok(())
+            }
+            ScreenBufferKind::RgbMonocolor(_, old_palette) => {
+                *old_palette = palette;
+                Ok(())
+            }
+            ScreenBufferKind::Monocolor(_) => Err(io::ErrorKind::InvalidData.into()),
         }
+        .map(|_| {
+            self.all_dirty();
+        })
     }
 
     pub fn set_cell(&mut self, row: usize, col: usize, value: bool) -> io::Result<()> {
@@ -191,5 +196,9 @@ impl ScreenBuffer {
         self.dirty_row_buffer
             .iter_mut()
             .for_each(|row| *row = false);
+    }
+
+    pub fn all_dirty(&mut self) {
+        self.dirty_row_buffer.iter_mut().for_each(|row| *row = true);
     }
 }
