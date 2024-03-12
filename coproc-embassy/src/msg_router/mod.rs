@@ -109,6 +109,12 @@ impl<
                 self.display_router.handle_request_commit_render().await;
                 None
             }
+            (set_monocolor_palette::MAJOR, set_monocolor_palette::MINOR, _) => {
+                self.display_router
+                    .handle_set_monocolor_palette(&self.msg_buffer[2..])
+                    .await;
+                None
+            }
             (set_single_cell::MAJOR, set_single_cell::MINOR, 5..) => {
                 self.display_router
                     .handle_update_single_cell(&self.msg_buffer[2..])

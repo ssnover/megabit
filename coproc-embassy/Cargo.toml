@@ -33,6 +33,7 @@ embedded-hal = "1.0"
 embedded-hal-async = "1.0"
 panic-probe = { version = "0.3", features = ["print-defmt"] }
 static_cell = "2"
+unroll = "0.1"
 
 [profile.release]
 debug = 2

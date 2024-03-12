@@ -9,6 +9,7 @@ use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::Timer;
 use embedded_hal::digital::OutputPin;
+use unroll::unroll_for_loops;
 
 pub trait Hub75Display {}
 
@@ -156,29 +157,36 @@ impl<PINS: DriverPins> WaveshareDriver<PINS> {
         }
     }
 
-    pub async fn render(&mut self, timing_pin: &mut impl OutputPin) {
+    #[unroll_for_loops]
+    pub async fn render(&mut self, debug_pin: &mut impl OutputPin) {
         let pixel_data = self.pixel_data.lock().await;
         let pixel_data = pixel_data.borrow();
         for pwm_step in 0..(1u8 << 4) {
             let pwm_step = pwm_step << 1;
             for row in 0..(ROWS / 2) {
-                timing_pin.set_low().unwrap();
-                for idx in (row * COLUMNS)..((row + 1) * COLUMNS) {
-                    let idx2 = idx + pixel_data.len() / 2;
-                    let (r1, g1, b1) = channels(pixel_data[idx]);
-                    let (r2, g2, b2) = channels(pixel_data[idx2]);
-                    self.pins.r1().set_state((r1 > pwm_step).into()).unwrap();
-                    self.pins.g1().set_state((g1 > pwm_step).into()).unwrap();
-                    self.pins.b1().set_state((b1 > pwm_step).into()).unwrap();
-                    self.pins.r2().set_state((r2 > pwm_step).into()).unwrap();
-                    self.pins.g2().set_state((g2 > pwm_step).into()).unwrap();
-                    self.pins.b2().set_state((b2 > pwm_step).into()).unwrap();
+                debug_pin.set_low().unwrap();
+                for idx in ((row * COLUMNS)..((row + 1) * COLUMNS))
+                    .into_iter()
+                    .step_by(16)
+                {
+                    for idx_add in 0..16 {
+                        let idx = idx + idx_add;
+                        let idx2 = idx + pixel_data.len() / 2;
+                        let (r1, g1, b1) = channels(pixel_data[idx]);
+                        let (r2, g2, b2) = channels(pixel_data[idx2]);
+                        self.pins.r1().set_state((r1 > pwm_step).into()).unwrap();
+                        self.pins.g1().set_state((g1 > pwm_step).into()).unwrap();
+                        self.pins.b1().set_state((b1 > pwm_step).into()).unwrap();
+                        self.pins.r2().set_state((r2 > pwm_step).into()).unwrap();
+                        self.pins.g2().set_state((g2 > pwm_step).into()).unwrap();
+                        self.pins.b2().set_state((b2 > pwm_step).into()).unwrap();
 
-                    self.pins.clk().set_high().unwrap();
-                    cortex_m::asm::delay(1);
-                    self.pins.clk().set_low().unwrap();
+                        self.pins.clk().set_high().unwrap();
+                        cortex_m::asm::delay(1);
+                        self.pins.clk().set_low().unwrap();
+                    }
                 }
-                timing_pin.set_high().unwrap();
+                debug_pin.set_high().unwrap();
 
                 self.pins.oe().set_high().unwrap();
                 cortex_m::asm::delay(50);
@@ -213,6 +221,7 @@ impl<PINS: DriverPins> WaveshareDriver<PINS> {
     }
 }
 
+#[inline]
 fn channels(pixel_color: u16) -> (u8, u8, u8) {
     let r = (pixel_color & 0b11111_00000_00000) >> 10;
     let g = (pixel_color & 0b00000_11111_00000) >> 5;

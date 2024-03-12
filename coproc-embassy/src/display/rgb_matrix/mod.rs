@@ -2,10 +2,14 @@ use super::DisplayCmdReceiver;
 use crate::{
     msg_router::{
         cmds::*,
-        display_cmd_router::{DisplayCommand, RowUpdate, RowUpdateRgb, UpdateSingleCell},
+        display_cmd_router::{
+            DisplayCommand, RowUpdate, RowUpdateRgb, SetMonocolorPalette, UpdateSingleCell,
+        },
     },
     usb::UsbResponder,
 };
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
+use embedded_hal::digital::StatefulOutputPin;
 
 mod driver;
 pub use driver::{DriverHandle, DriverPins, WaveshareDriver};
@@ -14,19 +18,23 @@ pub const COLUMNS: usize = 64;
 pub const ROWS: usize = 32;
 pub const DISPLAY_CMD_QUEUE_SIZE: usize = 8;
 
-pub struct DisplayCommandHandler<R: UsbResponder + 'static> {
+pub struct DisplayCommandHandler<R: UsbResponder + 'static, DBG: StatefulOutputPin> {
     responder: &'static R,
     cmd_rx: DisplayCmdReceiver,
     monocolor: u16,
     driver: DriverHandle,
+    row_data_buffer: &'static Mutex<NoopRawMutex, [u16; COLUMNS]>,
+    debug_pin: DBG,
 }
 
-impl<R: UsbResponder + 'static> DisplayCommandHandler<R> {
+impl<R: UsbResponder + 'static, DBG: StatefulOutputPin> DisplayCommandHandler<R, DBG> {
     pub fn new(
         responder: &'static R,
         cmd_rx: DisplayCmdReceiver,
         (r, g, b): (u8, u8, u8),
         driver: DriverHandle,
+        row_data_buffer: &'static Mutex<NoopRawMutex, [u16; COLUMNS]>,
+        debug_pin: DBG,
     ) -> Self {
         let monocolor =
             (((r & 0xf8) as u16) << 7) | (((g & 0xf8) as u16) << 2) | ((b & 0xf8) as u16 >> 3);
@@ -35,6 +43,8 @@ impl<R: UsbResponder + 'static> DisplayCommandHandler<R> {
             cmd_rx,
             monocolor,
             driver,
+            row_data_buffer,
+            debug_pin,
         }
     }
 
@@ -79,14 +89,19 @@ impl<R: UsbResponder + 'static> DisplayCommandHandler<R> {
                 ];
                 self.responder.send(&response_buf).await.unwrap();
             }
-            DisplayCommand::RowUpdateRgb(RowUpdateRgb { row: _ }) => {
-                // todo: Need to create a slotted buffer for this data to reduce copies
+            DisplayCommand::RowUpdateRgb(RowUpdateRgb { row }) => {
+                self.debug_pin.toggle().unwrap();
+                {
+                    let row_buf = self.row_data_buffer.lock().await;
+                    self.driver.update_row_rgb(*row, &row_buf[..]).await;
+                }
                 let response_buf = [
                     update_row_rgb_response::MAJOR,
                     update_row_rgb_response::MINOR,
-                    0x01,
+                    0x00,
                 ];
                 self.responder.send(&response_buf).await.unwrap();
+                self.debug_pin.toggle().unwrap();
             }
             DisplayCommand::GetDisplayInfo => {
                 let mut response_buf = [0u8; 11];
@@ -107,6 +122,15 @@ impl<R: UsbResponder + 'static> DisplayCommandHandler<R> {
                 let response_buf = [
                     commit_render_response::MAJOR,
                     commit_render_response::MINOR,
+                    0x00,
+                ];
+                self.responder.send(&response_buf).await.unwrap();
+            }
+            DisplayCommand::SetMonocolorPalette(SetMonocolorPalette { color }) => {
+                self.monocolor = *color;
+                let response_buf = [
+                    set_monocolor_palette_response::MAJOR,
+                    set_monocolor_palette_response::MINOR,
                     0x00,
                 ];
                 self.responder.send(&response_buf).await.unwrap();

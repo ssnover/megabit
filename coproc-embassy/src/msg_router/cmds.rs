@@ -38,6 +38,16 @@ pub mod commit_render_response {
     pub const MINOR: u8 = 0x07;
 }
 
+pub mod set_monocolor_palette {
+    pub const MAJOR: u8 = 0xa0;
+    pub const MINOR: u8 = 0x08;
+}
+
+pub mod set_monocolor_palette_response {
+    pub const MAJOR: u8 = 0xa0;
+    pub const MINOR: u8 = 0x09;
+}
+
 pub mod set_single_cell {
     pub const MAJOR: u8 = 0xa0;
     pub const MINOR: u8 = 0x50;
