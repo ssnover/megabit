@@ -1,7 +1,7 @@
 use super::super::ScreenBuffer;
 use crate::{
     display::{DisplayConfiguration, MonocolorPalette},
-    transport::SyncSerialConnection,
+    transport::SyncConnection,
 };
 
 pub fn write_region(
@@ -45,7 +45,7 @@ pub fn write_region_rgb(
 
 pub fn render(
     screen_buffer: &mut ScreenBuffer,
-    serial_conn: SyncSerialConnection,
+    serial_conn: SyncConnection,
     rows: Vec<u8>,
 ) -> Result<(), extism::Error> {
     for row_number in rows {
@@ -69,7 +69,7 @@ pub fn render(
 
 pub fn set_monocolor_palette(
     screen_buffer: &mut ScreenBuffer,
-    serial_conn: SyncSerialConnection,
+    serial_conn: SyncConnection,
     on_color: u16,
     off_color: u16,
 ) -> Result<(), extism::Error> {

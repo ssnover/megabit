@@ -1,7 +1,7 @@
 use self::host_functions::with_host_functions;
 use crate::{
     display::{DisplayConfiguration, ScreenBuffer},
-    transport::SyncSerialConnection,
+    transport::SyncConnection,
 };
 use app_manifest::AppManifest;
 use std::{cell::RefCell, collections::BTreeMap, path::Path, rc::Rc, time::Duration};
@@ -14,11 +14,11 @@ pub type KvStore = BTreeMap<String, Vec<u8>>;
 struct PersistentData {
     screen_buffer: Rc<RefCell<ScreenBuffer>>,
     kv_store: Rc<RefCell<KvStore>>,
-    serial_conn: SyncSerialConnection,
+    serial_conn: SyncConnection,
 }
 
 impl PersistentData {
-    fn new(serial_conn: SyncSerialConnection, display_cfg: DisplayConfiguration) -> Self {
+    fn new(serial_conn: SyncConnection, display_cfg: DisplayConfiguration) -> Self {
         let screen_buffer = Rc::new(RefCell::new(ScreenBuffer::new(
             display_cfg.width,
             display_cfg.height,
@@ -46,7 +46,7 @@ impl WasmAppRunner {
         wasm_bin_path: impl AsRef<Path>,
         refresh_period: Option<Duration>,
         app_name: impl Into<String>,
-        serial_conn: SyncSerialConnection,
+        serial_conn: SyncConnection,
         display_cfg: DisplayConfiguration,
     ) -> anyhow::Result<Self> {
         let wasm_app_bin = extism::Wasm::file(wasm_bin_path);
@@ -65,7 +65,7 @@ impl WasmAppRunner {
 
     pub fn from_manifest(
         app_path: impl AsRef<Path>,
-        serial_conn: SyncSerialConnection,
+        serial_conn: SyncConnection,
         display_cfg: DisplayConfiguration,
     ) -> anyhow::Result<Self> {
         let app_manifest = AppManifest::open(app_path)?;

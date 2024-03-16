@@ -35,7 +35,7 @@ fn main() -> anyhow::Result<()> {
         .build()?;
 
     let (serial_conn, serial_task) = transport::start_transport_task(args.device);
-    let serial_conn = transport::SyncSerialConnection::new(serial_conn, rt.handle().clone());
+    let serial_conn = transport::SyncConnection::new(serial_conn, rt.handle().clone());
 
     let _serial_task_handle = rt.spawn(Box::into_pin(serial_task));
 
