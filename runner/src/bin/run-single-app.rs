@@ -1,4 +1,5 @@
 use clap::Parser;
+use inotify::{EventMask, Inotify, WatchMask};
 use megabit_runner::{
     display::{DisplayConfiguration, PixelRepresentation},
     serial, wasm_env,
@@ -25,7 +26,7 @@ fn main() -> anyhow::Result<()> {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "run_single_app=debug,megabit_runner=debug".into()),
+                .unwrap_or_else(|_| "run_single_app=debug,megabit_runner=info".into()),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
@@ -50,19 +51,33 @@ fn main() -> anyhow::Result<()> {
     };
     tracing::info!("Retrieved info about the display: {display_info:?}");
 
-    let mut wasm_app = wasm_env::WasmAppRunner::new(
-        args.app,
-        args.refresh.map(Duration::from_millis),
-        "Demo",
-        serial_conn,
-        display_info,
-    )?;
+    let mut inotify = Inotify::init().unwrap();
+    inotify
+        .watches()
+        .add(
+            &args.app,
+            WatchMask::MODIFY
+                | WatchMask::CREATE
+                | WatchMask::DELETE
+                | WatchMask::ACCESS
+                | WatchMask::ATTRIB,
+        )
+        .unwrap();
 
-    tracing::info!("Running app: {}", wasm_app.name());
-    wasm_app.setup_app()?;
+    loop {
+        let mut wasm_app = wasm_env::WasmAppRunner::new(
+            &args.app,
+            args.refresh.map(Duration::from_millis),
+            "Demo",
+            serial_conn.clone(),
+            display_info.clone(),
+        )?;
+        tracing::info!("Running app: {}", wasm_app.name());
+        wasm_app.setup_app()?;
 
-    if let Some(refresh_period) = wasm_app.refresh_period() {
-        loop {
+        let refresh_period = wasm_app.refresh_period().unwrap_or(Duration::from_secs(1));
+
+        let res = loop {
             let start_time = std::time::Instant::now();
             tracing::debug!("Running");
             match wasm_app.run_app_once() {
@@ -78,13 +93,36 @@ fn main() -> anyhow::Result<()> {
                         "Running Wasm app {} failed: {err}, exiting",
                         wasm_app.name()
                     );
-                    break;
+                    break Err(err);
                 }
             }
+            if check_for_app_file_change(&mut inotify) {
+                tracing::info!("App file changed, reloading");
+                break Ok(());
+            }
+        };
+        if res.is_err() {
+            break;
         }
-    } else {
-        if let Ok(()) = wasm_app.run_app_once() {}
     }
 
     Ok(())
+}
+
+fn check_for_app_file_change(inotify: &mut Inotify) -> bool {
+    let mut buffer = [0u8; 4096];
+    if let Ok(events) = inotify.read_events(&mut buffer) {
+        events
+            .into_iter()
+            .find(|event| {
+                tracing::info!("Event mask: {:?}", event.mask);
+                event.mask.contains(EventMask::MODIFY)
+                    || event.mask.contains(EventMask::CREATE)
+                    || event.mask.contains(EventMask::DELETE)
+                    || event.mask.contains(EventMask::ATTRIB)
+            })
+            .is_some()
+    } else {
+        false
+    }
 }
