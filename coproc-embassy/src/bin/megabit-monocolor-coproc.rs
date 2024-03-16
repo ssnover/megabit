@@ -11,10 +11,10 @@ use embassy_nrf::{
     usb::{self, vbus_detect::HardwareVbusDetect},
     Peripheral,
 };
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Channel};
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Channel, mutex::Mutex};
 use megabit_coproc_embassy::{
     cobs_buffer::CobsBuffer,
-    display::{dot_matrix::DisplayCommandHandler, DotMatrix, DISPLAY_CMD_QUEUE_SIZE},
+    display::{dot_matrix::DisplayCommandHandler, DotMatrix, COLUMNS, DISPLAY_CMD_QUEUE_SIZE},
     msg_router::{
         display_cmd_router::{DisplayCmdRouter, DisplayCommand},
         system_cmd_router::{SystemCmdRouter, SystemCommand},
@@ -45,6 +45,7 @@ static COBS_DECODE_BUFFER: StaticCell<[u8; COBS_DECODE_BUFFER_SIZE]> = StaticCel
 static COBS_ENCODE_BUFFER: StaticCell<[u8; COBS_ENCODE_BUFFER_SIZE]> = StaticCell::new();
 static MESSAGE_BUFFER: StaticCell<[u8; COBS_DECODE_BUFFER_SIZE]> = StaticCell::new();
 static USB_RESPONDER: StaticCell<Responder<UsbDriver, COBS_ENCODE_BUFFER_SIZE>> = StaticCell::new();
+static ROW_DATA_BUFFER: StaticCell<Mutex<NoopRawMutex, [u16; COLUMNS]>> = StaticCell::new();
 
 #[embassy_executor::main]
 async fn main(spawner: embassy_executor::Spawner) {
@@ -57,8 +58,11 @@ async fn main(spawner: embassy_executor::Spawner) {
     );
     let responder = USB_RESPONDER.init(responder);
 
+    let row_data_buffer = ROW_DATA_BUFFER.init_with(|| Mutex::new([0u16; COLUMNS]));
+
     let display_cmd_channel = DISPLAY_CMD_CHANNEL.init(Channel::new());
-    let display_cmd_router = DisplayCmdRouter::new(display_cmd_channel.sender(), false);
+    let display_cmd_router =
+        DisplayCmdRouter::new(display_cmd_channel.sender(), row_data_buffer, false);
     let system_cmd_channel = SYSTEM_CMD_CHANNEL.init(Channel::new());
     let system_cmd_router = SystemCmdRouter::new(system_cmd_channel.sender());
 

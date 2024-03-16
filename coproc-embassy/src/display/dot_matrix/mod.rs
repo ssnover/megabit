@@ -105,6 +105,14 @@ impl<D: DotMatrixDriver<COLUMN_DATA_SIZE>, R: UsbResponder + 'static> DisplayCom
                 ];
                 self.responder.send(&response_buf).await.unwrap();
             }
+            DisplayCommand::SetMonocolorPalette(_) => {
+                let response_buf = [
+                    set_monocolor_palette_response::MAJOR,
+                    set_monocolor_palette_response::MINOR,
+                    0x01,
+                ];
+                self.responder.send(&response_buf).await.unwrap();
+            }
         }
     }
 }
