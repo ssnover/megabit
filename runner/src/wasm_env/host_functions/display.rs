@@ -1,7 +1,7 @@
 use super::super::ScreenBuffer;
 use crate::{
     display::{DisplayConfiguration, MonocolorPalette},
-    serial::SyncSerialConnection,
+    transport::SyncSerialConnection,
 };
 
 pub fn write_region(

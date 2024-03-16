@@ -1,3 +1,3 @@
 pub mod display;
-pub mod serial;
+pub mod transport;
 pub mod wasm_env;

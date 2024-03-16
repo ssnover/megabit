@@ -1,20 +1,46 @@
+use self::msg_inbox::{InboxHandle, MessageInbox};
 use async_channel::{Receiver, Sender};
 use megabit_serial_protocol::*;
 use std::{
     future::Future,
     io,
-    path::{Path, PathBuf},
+    net::SocketAddr,
+    path::PathBuf,
+    str::FromStr,
     time::{Duration, Instant},
 };
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf},
+    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
     sync::oneshot,
 };
 use tokio_serial::{SerialPortBuilderExt, SerialStream};
 
-use self::msg_inbox::{InboxHandle, MessageInbox};
-
 mod msg_inbox;
+
+trait AsyncIo: AsyncRead + AsyncWrite + Unpin + Send + Sync {}
+
+impl AsyncIo for SerialStream {}
+impl AsyncIo for tokio::net::TcpStream {}
+
+#[derive(Debug, Clone)]
+pub enum DeviceTransport {
+    Serial(PathBuf),
+    Tcp(SocketAddr),
+}
+
+impl From<String> for DeviceTransport {
+    fn from(value: String) -> Self {
+        if let Ok(addr) = SocketAddr::from_str(&value) {
+            Self::Tcp(addr)
+        } else {
+            if let Ok(path) = PathBuf::from_str(&value) {
+                Self::Serial(path)
+            } else {
+                panic!("Failed to parse DeviceTransport from {value}");
+            }
+        }
+    }
+}
 
 #[derive(Debug)]
 enum SerialTaskRequest {
@@ -24,14 +50,13 @@ enum SerialTaskRequest {
     },
 }
 
-pub fn start_serial_task(
-    device_path: impl AsRef<Path>,
+pub fn start_transport_task(
+    transport_info: DeviceTransport,
 ) -> (SerialConnection, Box<dyn Future<Output = ()> + Send + Sync>) {
     let (msg_tx, msg_rx) = async_channel::unbounded();
     let (tx, rx) = async_channel::unbounded();
-    let device_path = device_path.as_ref().to_path_buf();
 
-    let serial_future = serial_task(device_path, rx, msg_tx);
+    let serial_future = transport_task(transport_info, rx, msg_tx);
     let _ping_task = {
         let tx = tx.clone();
         async move {
@@ -333,35 +358,25 @@ impl SyncSerialConnection {
     }
 }
 
-async fn serial_task(
-    device_path: PathBuf,
+async fn transport_task(
+    info: DeviceTransport,
     request_rx: Receiver<SerialTaskRequest>,
     incoming_msg_tx: Sender<SerialMessage>,
 ) {
     tracing::info!("Starting serial task");
-    let serial_port =
-        match tokio_serial::new(device_path.to_str().unwrap(), 230400).open_native_async() {
-            Ok(serial) => serial,
-            Err(err) => {
-                tracing::error!(
-                    "Failed to open serial port {}: {err}",
-                    device_path.display()
-                );
-                return;
-            }
-        };
-    tracing::info!("Opened serial port: {}", device_path.display());
-    let (serial_rx, serial_tx) = tokio::io::split(serial_port);
+    let transport = connect(info).await;
+
+    let (transport_rx, transport_tx) = tokio::io::split(transport);
 
     tokio::select! {
-        res = handle_requests(serial_tx, request_rx) => {
+        res = handle_requests(transport_tx, request_rx) => {
             if let Err(err) = res {
                 tracing::error!("Serial task request handling exited with error: {err}");
             } else {
                 tracing::info!("Serial task request handling exited");
             }
         },
-        res = handle_serial_msgs(serial_rx, incoming_msg_tx) => {
+        res = handle_serial_msgs(transport_rx, incoming_msg_tx) => {
             if let Err(err) = res {
                 tracing::error!("Serial task serial message handling exited with error: {err}");
             } else {
@@ -371,8 +386,38 @@ async fn serial_task(
     };
 }
 
+async fn connect(info: DeviceTransport) -> Box<dyn AsyncIo> {
+    match info {
+        DeviceTransport::Serial(device_path) => {
+            match tokio_serial::new(device_path.to_str().unwrap(), 230400).open_native_async() {
+                Ok(serial) => {
+                    tracing::info!("Opened serial port: {}", device_path.display());
+                    return Box::new(serial);
+                }
+                Err(err) => {
+                    tracing::error!(
+                        "Failed to open serial port {}: {err}",
+                        device_path.display()
+                    );
+                    panic!("");
+                }
+            };
+        }
+        DeviceTransport::Tcp(addr) => match tokio::net::TcpStream::connect(addr).await {
+            Ok(stream) => {
+                tracing::info!("Opened tcp connection: {addr}");
+                return Box::new(stream);
+            }
+            Err(err) => {
+                tracing::error!("Failed to open tcp stream to {addr}: {err}");
+                panic!("");
+            }
+        },
+    }
+}
+
 async fn handle_requests(
-    mut serial_tx: WriteHalf<SerialStream>,
+    mut serial_tx: impl AsyncWrite + Unpin,
     request_rx: Receiver<SerialTaskRequest>,
 ) -> anyhow::Result<()> {
     while let Ok(msg) = request_rx.recv().await {
@@ -391,7 +436,7 @@ async fn handle_requests(
 }
 
 async fn handle_serial_msgs(
-    mut serial_rx: ReadHalf<SerialStream>,
+    mut serial_rx: impl AsyncRead + Unpin,
     incoming_msg_tx: Sender<SerialMessage>,
 ) -> anyhow::Result<()> {
     let mut incoming_serial_buffer = Vec::with_capacity(1024);

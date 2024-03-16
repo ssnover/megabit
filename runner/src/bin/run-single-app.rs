@@ -2,7 +2,8 @@ use clap::Parser;
 use inotify::{EventMask, Inotify, WatchMask};
 use megabit_runner::{
     display::{DisplayConfiguration, PixelRepresentation},
-    serial, wasm_env,
+    transport::{self, DeviceTransport},
+    wasm_env,
 };
 use std::{path::PathBuf, time::Duration};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -11,7 +12,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 pub struct Args {
     /// Path to the tty serial device for the display coprocessor
     #[arg(long)]
-    device: PathBuf,
+    device: DeviceTransport,
     /// Path to a wasm binary application
     #[arg(long)]
     app: PathBuf,
@@ -35,8 +36,8 @@ fn main() -> anyhow::Result<()> {
         .enable_all()
         .build()?;
 
-    let (serial_conn, serial_task) = serial::start_serial_task(args.device);
-    let serial_conn = serial::SyncSerialConnection::new(serial_conn, rt.handle().clone());
+    let (serial_conn, serial_task) = transport::start_transport_task(args.device);
+    let serial_conn = transport::SyncSerialConnection::new(serial_conn, rt.handle().clone());
 
     let _serial_task_handle = rt.spawn(Box::into_pin(serial_task));
 

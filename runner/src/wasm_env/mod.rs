@@ -1,7 +1,7 @@
 use self::host_functions::with_host_functions;
 use crate::{
     display::{DisplayConfiguration, ScreenBuffer},
-    serial::SyncSerialConnection,
+    transport::SyncSerialConnection,
 };
 use app_manifest::AppManifest;
 use std::{cell::RefCell, collections::BTreeMap, path::Path, rc::Rc, time::Duration};
