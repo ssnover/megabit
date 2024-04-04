@@ -24,17 +24,19 @@ impl SerialListener {
         to_simulator: Sender<Vec<u8>>,
         from_simulator: Receiver<Vec<u8>>,
     ) -> io::Result<()> {
-        let (mut stream, _peer) = self.listener.accept().await?;
-        stream.set_nodelay(true)?;
-        let (reader, writer) = stream.split();
+        loop {
+            let to_sim = to_simulator.clone();
+            let from_sim = from_simulator.clone();
 
-        tokio::join!(
-            Self::handle_incoming_serial_bytes(reader, to_simulator),
-            Self::handle_simulator_packet(writer, from_simulator)
-        );
+            let (mut stream, _peer) = self.listener.accept().await?;
+            stream.set_nodelay(true)?;
+            let (reader, writer) = stream.split();
 
-        tracing::info!("Exiting serial device listening context");
-        Ok(())
+            tokio::join!(
+                Self::handle_incoming_serial_bytes(reader, to_sim),
+                Self::handle_simulator_packet(writer, from_sim)
+            );
+        }
     }
 
     async fn handle_incoming_serial_bytes(mut reader: ReadHalf<'_>, to_simulator: Sender<Vec<u8>>) {
@@ -64,7 +66,8 @@ impl SerialListener {
                 }
             } else {
                 if let Err(err) = reader.read_buf(&mut incoming_buffer).await {
-                    tracing::error!("Error reading from the pty: {err}");
+                    tracing::error!("Error reading from the serial port: {err}");
+                    break;
                 }
             }
         }
