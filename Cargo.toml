@@ -1,4 +1,17 @@
 [workspace]
 resolver = "2"
-members = ["console/backend", "runner", "serial-protocol", "simulator/backend", "simulator/sim_msgs"]
+members = ["console/backend", "runner", "runner/runner_msgs", "serial-protocol", "simulator/backend", "simulator/sim_msgs", "utils"]
 exclude = ["app-sdk", "coproc-embassy", "example-apps", "simulator/frontend", "console/frontend"]
+
+[workspace.dependencies]
+# Internal
+megabit-runner-msgs = { path = "runner/runner_msgs" }
+megabit-serial-protocol = { path = "serial-protocol" }
+megabit-utils = { path = "utils" }
+# External
+anyhow = { version = "1" }
+async-channel = { version = "2.1" }
+clap = { version = "4.4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1.0", features = ["full"] }
+tracing = { version = "0.1" }

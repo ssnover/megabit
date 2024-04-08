@@ -83,7 +83,7 @@ impl ScreenBuffer {
     pub fn set_palette(&mut self, palette: MonocolorPalette) -> io::Result<()> {
         match &mut self.buffer {
             ScreenBufferKind::Rgb555(buffer) => {
-                let buffer = buffer.into_iter().map(|value| *value != 0x00).collect();
+                let buffer = buffer.iter_mut().map(|value| *value != 0x00).collect();
                 self.buffer = ScreenBufferKind::RgbMonocolor(buffer, palette);
                 Ok(())
             }

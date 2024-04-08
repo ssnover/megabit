@@ -1,3 +1,4 @@
+use md5::Digest;
 use serde::Deserialize;
 use std::{
     io::{self, Read},
@@ -8,6 +9,7 @@ use std::{
 #[derive(Debug, Clone)]
 pub struct AppManifest {
     pub path: PathBuf,
+    pub md5sum: String,
     pub app_name: String,
     pub app_bin_path: PathBuf,
     pub refresh_period: Option<Duration>,
@@ -40,9 +42,18 @@ impl AppManifest {
             let mut bin_path = manifest_dir.as_ref().to_path_buf();
             bin_path.push(manifest.bin);
 
+            let mut hasher = md5::Md5::new();
+            let mut bin_file = std::fs::File::open(&bin_path)?;
+            let mut app_file_data = Vec::new();
+            bin_file.read_to_end(&mut app_file_data)?;
+            hasher.update(app_file_data.as_slice());
+            let md5sum = hasher.finalize();
+            let md5sum = hex::encode(&md5sum);
+
             Ok(AppManifest {
                 path: manifest_filepath,
                 app_name: manifest.name,
+                md5sum,
                 app_bin_path: bin_path,
                 refresh_period: manifest
                     .refresh_period_ms

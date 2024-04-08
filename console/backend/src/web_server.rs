@@ -1,22 +1,11 @@
-use std::{io, net::SocketAddr};
+use async_channel::{Receiver, Sender};
+use std::io;
 
-use axum::Router;
-use tower_http::{
-    services::ServeDir,
-    trace::{DefaultMakeSpan, TraceLayer},
-};
-
-pub async fn serve(port: u16) -> io::Result<()> {
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-
-    tracing::debug!("Listening on {}", listener.local_addr()?);
+pub async fn serve(
+    port: u16,
+    to_ws_rx: Receiver<Vec<u8>>,
+    from_ws_tx: Sender<Vec<u8>>,
+) -> io::Result<()> {
     let dist_path = std::env::var("CONSOLE_DIST_DIR").unwrap_or("./console/frontend/dist".into());
-    let app = Router::new()
-        .fallback_service(ServeDir::new(dist_path).append_index_html_on_directories(true))
-        .layer(
-            TraceLayer::new_for_http()
-                .make_span_with(DefaultMakeSpan::default().include_headers(true)),
-        );
-    axum::serve(listener, app.into_make_service()).await
+    megabit_utils::serve(port, dist_path, to_ws_rx, from_ws_tx).await
 }

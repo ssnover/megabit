@@ -60,7 +60,7 @@ impl MessageInbox {
                 msg_queue.push_back((std::time::Instant::now(), Box::new(msg)));
 
                 if let Some(expiration_age) = self.msg_expiration_duration {
-                    while let Some((receive_time, _msg)) = msg_queue.get(0) {
+                    while let Some((receive_time, _msg)) = msg_queue.front() {
                         if receive_time.elapsed() > expiration_age {
                             let _ = msg_queue.pop_front();
                         } else {

@@ -59,7 +59,6 @@ fn main() -> anyhow::Result<()> {
     }
 
     let mut wasm_apps = std::fs::read_dir(data_dir)?
-        .into_iter()
         .map(|entry| {
             let entry = entry?;
             let path = entry.path();

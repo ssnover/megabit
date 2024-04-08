@@ -40,7 +40,7 @@ async fn connect(info: DeviceTransport) -> Box<dyn AsyncIo> {
             match tokio_serial::new(device_path.to_str().unwrap(), 230400).open_native_async() {
                 Ok(serial) => {
                     tracing::info!("Opened serial port: {}", device_path.display());
-                    return Box::new(serial);
+                    Box::new(serial)
                 }
                 Err(err) => {
                     tracing::error!(
@@ -49,12 +49,12 @@ async fn connect(info: DeviceTransport) -> Box<dyn AsyncIo> {
                     );
                     panic!("");
                 }
-            };
+            }
         }
         DeviceTransport::Tcp(addr) => match tokio::net::TcpStream::connect(addr).await {
             Ok(stream) => {
                 tracing::info!("Opened tcp connection: {addr}");
-                return Box::new(stream);
+                Box::new(stream)
             }
             Err(err) => {
                 tracing::error!("Failed to open tcp stream to {addr}: {err}");
