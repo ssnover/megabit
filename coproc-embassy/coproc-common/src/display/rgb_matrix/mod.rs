@@ -8,7 +8,10 @@ use crate::{
     },
     usb::UsbResponder,
 };
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
+use embassy_sync::{
+    blocking_mutex::raw::{NoopRawMutex, RawMutex},
+    mutex::Mutex,
+};
 use embedded_hal::digital::StatefulOutputPin;
 
 mod driver;
@@ -18,21 +21,27 @@ pub const COLUMNS: usize = 64;
 pub const ROWS: usize = 32;
 pub const DISPLAY_CMD_QUEUE_SIZE: usize = 8;
 
-pub struct DisplayCommandHandler<R: UsbResponder + 'static, DBG: StatefulOutputPin> {
+pub struct DisplayCommandHandler<
+    R: UsbResponder + 'static,
+    DBG: StatefulOutputPin,
+    M: RawMutex + 'static,
+> {
     responder: &'static R,
     cmd_rx: DisplayCmdReceiver,
     monocolor: u16,
-    driver: DriverHandle,
+    driver: DriverHandle<M>,
     row_data_buffer: &'static Mutex<NoopRawMutex, [u16; COLUMNS]>,
     debug_pin: DBG,
 }
 
-impl<R: UsbResponder + 'static, DBG: StatefulOutputPin> DisplayCommandHandler<R, DBG> {
+impl<R: UsbResponder + 'static, DBG: StatefulOutputPin, M: RawMutex + 'static>
+    DisplayCommandHandler<R, DBG, M>
+{
     pub fn new(
         responder: &'static R,
         cmd_rx: DisplayCmdReceiver,
         (r, g, b): (u8, u8, u8),
-        driver: DriverHandle,
+        driver: DriverHandle<M>,
         row_data_buffer: &'static Mutex<NoopRawMutex, [u16; COLUMNS]>,
         debug_pin: DBG,
     ) -> Self {
