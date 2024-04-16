@@ -1,12 +1,12 @@
 {
     "rust-analyzer.check.allTargets": false,
     // Uncomment a target corresponding to the target you're working on (or leave all commented if you're not cross-compiling)
-    "rust-analyzer.cargo.target": "thumbv7em-none-eabi",
-    // "rust-analyzer.cargo.target": "thumbv6m-none-eabi",
+    //"rust-analyzer.cargo.target": "thumbv7em-none-eabi",
+    "rust-analyzer.cargo.target": "thumbv6m-none-eabi",
     "rust-analyzer.linkedProjects": [
         // Uncomment for the project you're actively working on
         // "Cargo.toml",
-        "coproc-embassy/nano-ble-rgb/Cargo.toml",
-        // "coproc-embassy/pi-pico-rgb/Cargo.toml",
+        //"coproc-embassy/nano-ble-rgb/Cargo.toml",
+        "coproc-embassy/pi-pico-rgb/Cargo.toml",
     ],
 }
