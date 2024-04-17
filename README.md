@@ -1,6 +1,8 @@
 # megabit
 A retro-style display which renders pixels at the behest of apps powered by WebAssembly!
 
+Coprocessor Firmware Build: [![coproc-build](https://github.com/ssnover/megabit/actions/workflows/coproc.yml/badge.svg)](https://github.com/ssnover/megabit/actions/workflows/coproc.yml)
+
 ### Hello World from Megabit (Simulator)
 ![Scrolling text saying "Hello world from Megabit" in red on black background](docs/assets/hello-megabit.gif)
 
