@@ -2,9 +2,9 @@ name: coproc-build
 
 on:
   pull_request:
-    paths:
-      - 'coproc-embassy/**'
-      - '.github/workflows/coproc.yml'
+    # paths:
+    #   - 'coproc-embassy/**'
+    #   - '.github/workflows/coproc.yml'
   push:
     branches:
       - master
