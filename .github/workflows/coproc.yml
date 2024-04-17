@@ -1,0 +1,69 @@
+name: coproc-build
+
+on:
+  pull_request:
+    paths:
+      - 'coproc-embassy/**'
+      - '.github/workflows/coproc.yml'
+  push:
+    branches:
+      - master
+
+jobs:
+  format:
+    name: Check formatting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+      - name: Install rustfmt
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt
+          profile: minimal
+          override: true
+      - name: Format Nano
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check --manifest-path coproc-embassy/nano-ble-rgb/Cargo.toml
+      - name: Format Pico
+        usess: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check --manifest-path coproc-embassy/pi-pico-rgb/Cargo.toml
+  
+  build:
+    name: Build firmwares
+    needs: [format]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+      - name: Install rust toolchain for thumbv7em-none-eabi
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+          target: thumbv7em-none-eabi
+      - name: Install rust toolchain for thumbv6m-none-eabi
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+          target: thumbv6m-none-eabi
+      - name: Build Arduino Nano 33 BLE firmware
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: true
+          command: build
+          args: --release --manifest-path coproc-embassy/nano-ble-rgb/Cargo.toml --target thumbv7em-none-eabi
+      - name: Build Pi Pico firmware
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: true
+          command: build
+          args: --release --manifest-path coproc-embassy/pi-pico-rgb/Cargo.toml --target thumbv6m-none-eabi
