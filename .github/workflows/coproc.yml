@@ -29,7 +29,7 @@ jobs:
           command: fmt
           args: --all -- --check --manifest-path coproc-embassy/nano-ble-rgb/Cargo.toml
       - name: Format Pico
-        usess: actions-rs/cargo@v1
+        uses: actions-rs/cargo@v1
         with:
           command: fmt
           args: --all -- --check --manifest-path coproc-embassy/pi-pico-rgb/Cargo.toml
