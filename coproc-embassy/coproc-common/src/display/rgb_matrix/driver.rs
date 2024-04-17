@@ -5,7 +5,7 @@
 
 use super::{COLUMNS, ROWS};
 use core::{cell::RefCell, convert::Infallible};
-use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
+use embassy_sync::blocking_mutex::raw::RawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::Timer;
 use embedded_hal::digital::OutputPin;
@@ -133,20 +133,17 @@ impl<
 
 type PixelBuffer = [u16; ROWS * COLUMNS];
 
-pub struct WaveshareDriver<PINS: DriverPins> {
+pub struct WaveshareDriver<PINS: DriverPins, M: RawMutex + 'static> {
     pins: PINS,
-    pixel_data: &'static Mutex<ThreadModeRawMutex, RefCell<PixelBuffer>>,
+    pixel_data: &'static Mutex<M, RefCell<PixelBuffer>>,
 }
 
-impl<PINS: DriverPins> WaveshareDriver<PINS> {
-    pub fn new(
-        pins: PINS,
-        pixel_data: &'static Mutex<ThreadModeRawMutex, RefCell<PixelBuffer>>,
-    ) -> Self {
+impl<PINS: DriverPins, M: RawMutex + 'static> WaveshareDriver<PINS, M> {
+    pub fn new(pins: PINS, pixel_data: &'static Mutex<M, RefCell<PixelBuffer>>) -> Self {
         Self { pins, pixel_data }
     }
 
-    pub fn handle(&self) -> DriverHandle {
+    pub fn handle(&self) -> DriverHandle<M> {
         DriverHandle::new(self.pixel_data)
     }
 
@@ -229,12 +226,12 @@ fn channels(pixel_color: u16) -> (u8, u8, u8) {
     (r as u8, g as u8, b as u8)
 }
 
-pub struct DriverHandle {
-    pixel_data: &'static Mutex<ThreadModeRawMutex, RefCell<PixelBuffer>>,
+pub struct DriverHandle<M: RawMutex + 'static> {
+    pixel_data: &'static Mutex<M, RefCell<PixelBuffer>>,
 }
 
-impl DriverHandle {
-    pub fn new(pixel_data: &'static Mutex<ThreadModeRawMutex, RefCell<PixelBuffer>>) -> Self {
+impl<M: RawMutex + 'static> DriverHandle<M> {
+    pub fn new(pixel_data: &'static Mutex<M, RefCell<PixelBuffer>>) -> Self {
         Self { pixel_data }
     }
 
