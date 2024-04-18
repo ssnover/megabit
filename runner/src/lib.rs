@@ -73,19 +73,23 @@ impl Runner {
         serial_conn: SyncConnection,
         display_info: DisplayConfiguration,
     ) -> io::Result<WasmAppRunner> {
-        WasmAppRunner::from_manifest(&manifest.app_bin_path, serial_conn, display_info)
-            .map_err(|err| {
-                tracing::error!(
-                    "Failed to load WebAssembly binary for app {}: {:?}",
-                    manifest.app_name,
-                    err
-                );
-                io::ErrorKind::InvalidData.into()
-            })
-            .map(|runner| {
-                tracing::info!("Loaded WebAssembly binary for app {}", &manifest.app_name);
-                runner
-            })
+        WasmAppRunner::from_manifest(
+            &manifest.app_bin_path.parent().unwrap(),
+            serial_conn,
+            display_info,
+        )
+        .map_err(|err| {
+            tracing::error!(
+                "Failed to load WebAssembly binary for app {}: {:?}",
+                manifest.app_name,
+                err
+            );
+            io::ErrorKind::InvalidData.into()
+        })
+        .map(|runner| {
+            tracing::info!("Loaded WebAssembly binary for app {}", &manifest.app_name);
+            runner
+        })
     }
 
     pub fn run(&mut self) {

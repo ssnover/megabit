@@ -93,12 +93,13 @@ impl InboxHandle {
         matcher: Box<dyn Fn(&SerialMessage) -> bool + Send + Sync>,
         timeout: Option<Duration>,
     ) -> Option<SerialMessage> {
+        let start_time = Instant::now();
         let timeout_instant = timeout.map(|duration| std::time::Instant::now() + duration);
         loop {
             let msg = if let Some(msg_queue) = self.msg_queue.upgrade() {
                 let queue = msg_queue.lock().expect("Mutex locks");
-                let msg = queue.iter().find_map(|(_received_time, msg)| {
-                    if matcher(msg) {
+                let msg = queue.iter().find_map(|(received_time, msg)| {
+                    if matcher(msg) && *received_time > start_time {
                         Some(msg.clone())
                     } else {
                         None

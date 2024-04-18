@@ -82,7 +82,7 @@ fn main() -> anyhow::Result<()> {
         .collect::<Vec<_>>();
     tracing::info!("Found {} Megabit apps", wasm_apps.len());
 
-    let event_listener = EventListener::new(serial_conn);
+    let event_listener = EventListener::new(serial_conn, rt.handle().clone());
 
     let mut runner = Runner::new(wasm_apps, sync_serial_conn, display_info, event_listener)?;
     runner.run();

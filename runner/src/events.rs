@@ -1,9 +1,10 @@
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use crate::transport::Connection;
 use async_channel::{Receiver, Sender, TryRecvError};
 use megabit_serial_protocol::SerialMessage;
 
+#[derive(Clone, Debug)]
 pub enum Event {
     NextAppRequest,
     PreviousAppRequest,
@@ -12,20 +13,21 @@ pub enum Event {
     Shutdown,
 }
 
+#[derive(Clone)]
 pub struct EventListener {
     pending_event: Option<Event>,
     event_rx: Receiver<Event>,
-    _handle: tokio::task::JoinHandle<()>,
+    _handle: Arc<tokio::task::JoinHandle<()>>,
 }
 
 impl EventListener {
-    pub fn new(conn: Connection) -> Self {
+    pub fn new(conn: Connection, rt_handle: tokio::runtime::Handle) -> Self {
         let (tx, rx) = async_channel::bounded(10);
-        let handle = tokio::spawn(event_listener_task(tx, conn));
+        let handle = rt_handle.spawn(event_listener_task(tx, conn));
         Self {
             pending_event: None,
             event_rx: rx,
-            _handle: handle,
+            _handle: Arc::new(handle),
         }
     }
 
@@ -47,8 +49,11 @@ impl EventListener {
         }
     }
 
-    pub fn next(&self) -> Option<Event> {
-        None
+    pub fn next(&mut self) -> Option<Event> {
+        self.pending_event.take().map(|event| {
+            tracing::info!("Consuming event: {event:?}");
+            event
+        })
     }
 }
 
@@ -62,6 +67,7 @@ async fn event_listener_task(tx: Sender<Event>, conn: Connection) {
             .await
             .is_some()
         {
+            tracing::info!("Received button press");
             if let Err(err) = tx.send(Event::NextAppRequest).await {
                 tracing::error!("Failed to send event from event listener task: {err:?}");
                 return;
