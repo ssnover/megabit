@@ -218,8 +218,7 @@ async fn handle_update_row(
     {
         let pixel_states = row_data
             .into_iter()
-            .map(|byte| (0..8).map(move |bit| (byte & (1 << bit)) != 0x00))
-            .flatten()
+            .flat_map(|byte| (0..8).map(move |bit| (byte & (1 << bit)) != 0x00))
             .collect::<Vec<bool>>();
         let monocolor = {
             let mut display_buffer = display_buffer.lock().unwrap();

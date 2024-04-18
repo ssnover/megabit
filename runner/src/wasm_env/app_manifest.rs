@@ -33,7 +33,7 @@ impl AppManifest {
         let mut manifest_contents = String::new();
         manifest_file.read_to_string(&mut manifest_contents)?;
 
-        if let Ok(manifest) = serde_json::from_str::<ManifestSchema>(&mut manifest_contents) {
+        if let Ok(manifest) = serde_json::from_str::<ManifestSchema>(&manifest_contents) {
             if manifest.bin.contains('/') || manifest.bin.contains('\\') {
                 tracing::error!("Invalid binary filename: {}", &manifest.bin);
                 return Err(io::ErrorKind::InvalidData.into());
@@ -48,7 +48,7 @@ impl AppManifest {
             bin_file.read_to_end(&mut app_file_data)?;
             hasher.update(app_file_data.as_slice());
             let md5sum = hasher.finalize();
-            let md5sum = hex::encode(&md5sum);
+            let md5sum = hex::encode(md5sum);
 
             Ok(AppManifest {
                 path: manifest_filepath,

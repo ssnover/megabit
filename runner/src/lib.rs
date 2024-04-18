@@ -13,6 +13,7 @@ const DEFAULT_RUN_PERIOD: Duration = Duration::from_secs(1);
 
 pub struct Runner {
     apps: Vec<AppManifest>,
+    is_running: bool,
     current_runner: (usize, WasmAppRunner),
     serial_conn: SyncConnection,
     display_info: DisplayConfiguration,
@@ -24,15 +25,17 @@ impl Runner {
         apps: Vec<AppManifest>,
         serial_conn: SyncConnection,
         display_info: DisplayConfiguration,
+        event_listener: EventListener,
     ) -> io::Result<Self> {
         if !apps.is_empty() {
             let initial_app = Self::load_app(&apps[0], serial_conn.clone(), display_info.clone())?;
             Ok(Self {
                 apps,
+                is_running: true,
                 current_runner: (0, initial_app),
                 serial_conn,
                 display_info,
-                event_listener: EventListener::new(),
+                event_listener,
             })
         } else {
             todo!("Needs at least one app, write a default app for the future");
@@ -50,21 +53,39 @@ impl Runner {
         Ok(())
     }
 
+    fn load_previous_app(&mut self) -> io::Result<()> {
+        let prev_idx = if self.current_runner.0 == 0 {
+            self.apps.len() - 1
+        } else {
+            self.current_runner.0 - 1
+        };
+        let app = Self::load_app(
+            &self.apps[prev_idx],
+            self.serial_conn.clone(),
+            self.display_info.clone(),
+        )?;
+        self.current_runner = (prev_idx, app);
+        Ok(())
+    }
+
     fn load_app(
         manifest: &AppManifest,
         serial_conn: SyncConnection,
         display_info: DisplayConfiguration,
     ) -> io::Result<WasmAppRunner> {
-        WasmAppRunner::from_manifest(&manifest.app_bin_path, serial_conn, display_info).map_err(
-            |err| {
+        WasmAppRunner::from_manifest(&manifest.app_bin_path, serial_conn, display_info)
+            .map_err(|err| {
                 tracing::error!(
                     "Failed to load WebAssembly binary for app {}: {:?}",
                     manifest.app_name,
                     err
                 );
                 io::ErrorKind::InvalidData.into()
-            },
-        )
+            })
+            .map(|runner| {
+                tracing::info!("Loaded WebAssembly binary for app {}", &manifest.app_name);
+                runner
+            })
     }
 
     pub fn run(&mut self) {
@@ -72,7 +93,48 @@ impl Runner {
             self.run_app(false);
             while let Some(event) = self.event_listener.next() {
                 match event {
-                    Event::NextAppRequest
+                    Event::NextAppRequest => {
+                        let current_app = self.current_runner.0;
+
+                        while let Err(err) = self.load_next_app() {
+                            if current_app == self.current_runner.0 {
+                                // We've fully cycled around...
+                                tracing::error!("Cannot load any apps, exiting");
+                                std::process::exit(1);
+                            }
+                            tracing::error!("Unable to load app: {err:?}, going to the next");
+                        }
+                    }
+                    Event::PreviousAppRequest => {
+                        let current_app = self.current_runner.0;
+
+                        while let Err(err) = self.load_previous_app() {
+                            if current_app == self.current_runner.0 {
+                                // We've fully cycled around...
+                                tracing::error!("Cannot load any apps, exiting");
+                                std::process::exit(1);
+                            }
+                            tracing::error!("Unable to load app: {err:?}, going to the next");
+                        }
+                    }
+                    Event::ReloadAppsRequest => {
+                        tracing::error!("Unsupported");
+                    }
+                    Event::ResumePauseRequest => {
+                        match self.is_running {
+                            true => {
+                                tracing::info!("Pausing execution of the runner");
+                            }
+                            false => {
+                                tracing::info!("Resuming execution of the runner");
+                            }
+                        }
+                        self.is_running = !self.is_running;
+                    }
+                    Event::Shutdown => {
+                        tracing::info!("Received shutdown, stopping runner");
+                        return;
+                    }
                 }
             }
         }
