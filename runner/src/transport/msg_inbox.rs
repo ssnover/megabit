@@ -6,7 +6,7 @@ use std::{
 };
 use tokio::sync::watch::{channel, Receiver, Sender};
 
-type MessageQueue = VecDeque<(Instant, Box<SerialMessage>)>;
+type MessageQueue = VecDeque<(Instant, Box<SerialMessage>, bool)>;
 
 #[derive(Clone, Copy)]
 pub enum HandleNotification {
@@ -58,10 +58,10 @@ impl MessageInbox {
             {
                 let mut msg_queue = self.msg_queue.lock().unwrap();
                 tracing::debug!("Inbox got {:?}", msg.as_ref());
-                msg_queue.push_back((std::time::Instant::now(), Box::new(msg)));
+                msg_queue.push_back((std::time::Instant::now(), Box::new(msg), false));
 
                 if let Some(expiration_age) = self.msg_expiration_duration {
-                    while let Some((receive_time, _msg)) = msg_queue.front() {
+                    while let Some((receive_time, _msg, _)) = msg_queue.front() {
                         if receive_time.elapsed() > expiration_age {
                             let _ = msg_queue.pop_front();
                         } else {
@@ -93,13 +93,14 @@ impl InboxHandle {
         matcher: Box<dyn Fn(&SerialMessage) -> bool + Send + Sync>,
         timeout: Option<Duration>,
     ) -> Option<SerialMessage> {
-        let start_time = Instant::now();
+        let start_time = Instant::now() - Duration::from_millis(10);
         let timeout_instant = timeout.map(|duration| std::time::Instant::now() + duration);
         loop {
             let msg = if let Some(msg_queue) = self.msg_queue.upgrade() {
-                let queue = msg_queue.lock().expect("Mutex locks");
-                let msg = queue.iter().find_map(|(received_time, msg)| {
-                    if matcher(msg) && *received_time > start_time {
+                let mut queue = msg_queue.lock().expect("Mutex locks");
+                let msg = queue.iter_mut().find_map(|(received_time, msg, matched)| {
+                    if matcher(msg) && *received_time > start_time && !*matched {
+                        *matched = true;
                         Some(msg.clone())
                     } else {
                         None
@@ -144,14 +145,17 @@ impl InboxHandle {
         start_time: Instant,
     ) -> Option<SerialMessage> {
         if let Some(msg_queue) = self.msg_queue.upgrade() {
-            let msg_queue = msg_queue.lock().expect("Mutex locks");
-            msg_queue.iter().find_map(|(receive_time, msg)| {
-                if *receive_time >= start_time && matcher(msg.as_ref()) {
-                    Some(*msg.clone())
-                } else {
-                    None
-                }
-            })
+            let mut msg_queue = msg_queue.lock().expect("Mutex locks");
+            msg_queue
+                .iter_mut()
+                .find_map(|(receive_time, msg, matched)| {
+                    if *receive_time >= start_time && matcher(msg.as_ref()) {
+                        *matched = true;
+                        Some(*msg.clone())
+                    } else {
+                        None
+                    }
+                })
         } else {
             None
         }

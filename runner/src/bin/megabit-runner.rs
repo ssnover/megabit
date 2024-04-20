@@ -1,5 +1,6 @@
 use clap::Parser;
 use megabit_runner::{
+    api_server,
     display::{DisplayConfiguration, PixelRepresentation},
     events::EventListener,
     transport::{self, DeviceTransport},
@@ -25,7 +26,7 @@ fn main() -> anyhow::Result<()> {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                "megabit_runner=debug,megabit_runner::wasm_env::host_functions::host=info".into()
+                "megabit_runner=debug,megabit_runner::wasm_env::host_functions::host=info,megabit_runner::transport=debug".into()
             }),
         )
         .with(tracing_subscriber::fmt::layer())
@@ -82,10 +83,13 @@ fn main() -> anyhow::Result<()> {
         .collect::<Vec<_>>();
     tracing::info!("Found {} Megabit apps", wasm_apps.len());
 
-    let event_listener = EventListener::new(serial_conn, rt.handle().clone());
+    let api_server_handle = api_server::start(8003, rt.handle().clone());
+    let event_listener = EventListener::new(serial_conn, api_server_handle, rt.handle().clone());
 
     let mut runner = Runner::new(wasm_apps, sync_serial_conn, display_info, event_listener)?;
     runner.run();
+
+    tracing::info!("Exiting runner");
 
     Ok(())
 }

@@ -4,6 +4,7 @@ use std::{io, time::Duration};
 use transport::SyncConnection;
 use wasm_env::{AppManifest, WasmAppRunner};
 
+pub mod api_server;
 pub mod display;
 pub mod events;
 pub mod transport;
@@ -94,7 +95,9 @@ impl Runner {
 
     pub fn run(&mut self) {
         loop {
-            self.run_app(false);
+            if self.is_running {
+                self.run_app(false);
+            }
             while let Some(event) = self.event_listener.next() {
                 match event {
                     Event::NextAppRequest => {
@@ -167,10 +170,13 @@ impl Runner {
                 tracing::error!("Running Wasm app failed: {err}, exiting");
                 break;
             }
+            tracing::debug!("Finished running app");
             if start_time.elapsed() < refresh_period {
                 std::thread::sleep(refresh_period - start_time.elapsed())
             }
+            tracing::debug!("Sleep finished");
             if self.event_listener.has_pending_events() {
+                tracing::debug!("Handling events");
                 break;
             }
         }

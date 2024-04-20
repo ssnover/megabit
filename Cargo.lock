@@ -1469,9 +1469,11 @@ dependencies = [
  "clap",
  "cobs",
  "extism",
+ "futures",
  "hex",
  "inotify",
  "md-5",
+ "megabit-runner-msgs",
  "megabit-serial-protocol",
  "serde",
  "serde_json",
@@ -1486,6 +1488,7 @@ name = "megabit-runner-msgs"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
 ]
 
 [[package]]
