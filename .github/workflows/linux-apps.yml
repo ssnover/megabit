@@ -1,0 +1,38 @@
+name: linux-apps-build
+
+on:
+  pull_request:
+    paths:
+      - 'console/**'
+      - 'runner/**'
+      - 'serial-protocol/**'
+      - 'simulator/**'
+      - 'utils/**'
+      - 'Cargo.toml'
+      - '.github/workflows/linux-apps.yml'
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  format:
+    name: Check formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name:
+        run: cargo fmt --all --check
+
+  build:
+    name: Build apps
+    needs: [format]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build Linux applications
+        run: cargo build --release
