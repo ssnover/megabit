@@ -193,8 +193,7 @@ impl Recorder {
                 self.dimensions.1 as u16,
                 captured_frame
                     .iter()
-                    .map(|pixel| Color(*pixel).to_rgb())
-                    .flatten()
+                    .flat_map(|pixel| Color(*pixel).to_rgb())
                     .collect::<Vec<_>>()
                     .as_slice(),
             );

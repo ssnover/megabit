@@ -3,8 +3,8 @@ use crate::{
     display::{DisplayConfiguration, ScreenBuffer},
     transport::SyncConnection,
 };
-use app_manifest::AppManifest;
-use std::{cell::RefCell, collections::BTreeMap, path::Path, rc::Rc, time::Duration};
+pub use app_manifest::AppManifest;
+use std::{cell::RefCell, collections::BTreeMap, io, path::Path, rc::Rc, time::Duration};
 
 mod app_manifest;
 mod host_functions;
@@ -35,8 +35,32 @@ impl PersistentData {
     }
 }
 
+pub fn load_apps_from_path(data_dir: impl AsRef<Path>) -> io::Result<Vec<AppManifest>> {
+    Ok(std::fs::read_dir(data_dir)?
+        .map(|entry| {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                if let Ok(app) = AppManifest::open(&path) {
+                    tracing::info!("Found app {} at path: {}", app.app_name, app.path.display());
+                    Ok(Some(app))
+                } else {
+                    tracing::warn!("Unable to build app from bundle at {}", path.display());
+                    Ok(None)
+                }
+            } else {
+                Ok(None)
+            }
+        })
+        .filter_map(|app: anyhow::Result<Option<AppManifest>>| match app {
+            Ok(app) => app,
+            Err(_) => None,
+        })
+        .collect::<Vec<_>>())
+}
+
 pub struct WasmAppRunner {
-    app: extism::Plugin,
+    plugin: extism::Plugin,
     name: String,
     refresh_period: Option<Duration>,
 }
@@ -57,7 +81,7 @@ impl WasmAppRunner {
             .build()?;
 
         Ok(WasmAppRunner {
-            app: plugin,
+            plugin,
             name: app_name.into(),
             refresh_period,
         })
@@ -87,10 +111,10 @@ impl WasmAppRunner {
     }
 
     pub fn setup_app(&mut self) -> anyhow::Result<()> {
-        self.app.call::<_, ()>("setup", ())
+        self.plugin.call::<_, ()>("setup", ())
     }
 
     pub fn run_app_once(&mut self) -> anyhow::Result<()> {
-        self.app.call::<_, ()>("run", ())
+        self.plugin.call::<_, ()>("run", ())
     }
 }

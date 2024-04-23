@@ -96,7 +96,7 @@ async fn handle_serial_message(
             let status = handle_update_row(
                 to_ws,
                 display_cfg,
-                &display_buffer,
+                display_buffer,
                 row_number,
                 row_data_len,
                 row_data,
@@ -135,7 +135,7 @@ async fn handle_serial_message(
         }
         SerialMessage::GetDisplayInfo(GetDisplayInfo) => {
             to_serial
-                .send(SerialMessage::GetDisplayInfoResponse(display_cfg.clone().into()).to_bytes())
+                .send(SerialMessage::GetDisplayInfoResponse((*display_cfg).into()).to_bytes())
                 .await?
         }
         SerialMessage::SetLedState(SetLedState { new_state }) => {
@@ -218,12 +218,7 @@ async fn handle_update_row(
     {
         let pixel_states = row_data
             .into_iter()
-            .map(|byte| {
-                (0..8)
-                    .into_iter()
-                    .map(move |bit| (byte & (1 << bit)) != 0x00)
-            })
-            .flatten()
+            .flat_map(|byte| (0..8).map(move |bit| (byte & (1 << bit)) != 0x00))
             .collect::<Vec<bool>>();
         let monocolor = {
             let mut display_buffer = display_buffer.lock().unwrap();
@@ -243,16 +238,14 @@ async fn handle_update_row(
             } else {
                 Status::Failure
             }
+        } else if let Ok(msg) = rmp_serde::to_vec(&SimMessage::SetMatrixRow(SetMatrixRow {
+            row: usize::from(row_number),
+            data: pixel_states,
+        })) {
+            let _ = to_ws.send(msg).await;
+            Status::Success
         } else {
-            if let Ok(msg) = rmp_serde::to_vec(&SimMessage::SetMatrixRow(SetMatrixRow {
-                row: usize::from(row_number),
-                data: pixel_states,
-            })) {
-                let _ = to_ws.send(msg).await;
-                Status::Success
-            } else {
-                Status::Failure
-            }
+            Status::Failure
         }
     } else {
         tracing::warn!("Got a request to write a matrix row of invalid length");

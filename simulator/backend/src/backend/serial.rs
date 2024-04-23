@@ -29,13 +29,24 @@ impl SerialListener {
             let from_sim = from_simulator.clone();
 
             let (mut stream, _peer) = self.listener.accept().await?;
-            stream.set_nodelay(true)?;
-            let (reader, writer) = stream.split();
+            tokio::spawn(async move {
+                if let Err(err) = stream.set_nodelay(true) {
+                    tracing::warn!("Failed to sett tcp nodelay: {err:?}");
+                }
+                let (reader, writer) = stream.split();
 
-            tokio::join!(
-                Self::handle_incoming_serial_bytes(reader, to_sim),
-                Self::handle_simulator_packet(writer, from_sim)
-            );
+                tokio::select! {
+                    _ = Self::handle_incoming_serial_bytes(reader, to_sim) => {
+                        tracing::info!("Exiting transport reader");
+                    },
+                    res = Self::handle_simulator_packet(writer, from_sim) => {
+                        match res {
+                            Ok(()) => tracing::info!("Exiting transport writer"),
+                            Err(err) => tracing::error!("Transport writer closed due to error: {err:?}"),
+                        }
+                    }
+                }
+            });
         }
     }
 
@@ -75,17 +86,21 @@ impl SerialListener {
         tracing::info!("Exiting handler for incoming serial data");
     }
 
-    async fn handle_simulator_packet(mut writer: WriteHalf<'_>, from_simulator: Receiver<Vec<u8>>) {
+    async fn handle_simulator_packet(
+        mut writer: WriteHalf<'_>,
+        from_simulator: Receiver<Vec<u8>>,
+    ) -> io::Result<()> {
         while let Ok(msg) = from_simulator.recv().await {
             let mut encoded_data = cobs::encode_vec(&msg[..]);
             encoded_data.push(0x00);
             tracing::debug!("Sending serial data: {encoded_data:02x?}");
-            send_data_stubbornly(&mut writer, &encoded_data[..]).await
+            send_data_stubbornly(&mut writer, &encoded_data[..]).await?
         }
+        Ok(())
     }
 }
 
-async fn send_data_stubbornly(writer: &mut WriteHalf<'_>, data: &[u8]) {
+async fn send_data_stubbornly(writer: &mut WriteHalf<'_>, data: &[u8]) -> io::Result<()> {
     let mut attempts = 0u32;
     loop {
         attempts += 1;
@@ -108,11 +123,14 @@ async fn send_data_stubbornly(writer: &mut WriteHalf<'_>, data: &[u8]) {
                 }
                 break;
             }
-            Ok(Err(_)) => {
+            Ok(Err(err)) => {
                 tracing::debug!("Try again!");
+                return Err(err);
             }
         }
     }
+
+    Ok(())
 }
 
 pub async fn run(

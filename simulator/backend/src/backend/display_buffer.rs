@@ -36,10 +36,7 @@ impl DisplayBuffer {
     pub fn update_row(&mut self, row_number: u8, data: Vec<bool>) {
         let row_number = row_number as usize;
         let start_idx = row_number * self.width;
-        for (idx, new_value) in (start_idx..(start_idx + self.width))
-            .into_iter()
-            .zip(data.iter())
-        {
+        for (idx, new_value) in (start_idx..(start_idx + self.width)).zip(data.iter()) {
             self.buffer[idx] = if *new_value { self.monocolor } else { 0 };
         }
     }
@@ -47,10 +44,7 @@ impl DisplayBuffer {
     pub fn update_row_rgb(&mut self, row_number: u8, data: Vec<u16>) {
         let row_number = row_number as usize;
         let start_idx = row_number * self.width;
-        for (idx, new_value) in (start_idx..(start_idx + self.width))
-            .into_iter()
-            .zip(data.iter())
-        {
+        for (idx, new_value) in (start_idx..(start_idx + self.width)).zip(data.iter()) {
             self.buffer[idx] = *new_value;
         }
     }

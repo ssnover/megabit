@@ -1,11 +1,12 @@
 use megabit_serial_protocol::SerialMessage;
 use std::{
-    cell::RefCell,
     collections::VecDeque,
     sync::{Arc, Mutex, Weak},
     time::{Duration, Instant},
 };
 use tokio::sync::watch::{channel, Receiver, Sender};
+
+type MessageQueue = VecDeque<(Instant, Box<SerialMessage>, bool)>;
 
 #[derive(Clone, Copy)]
 pub enum HandleNotification {
@@ -15,7 +16,7 @@ pub enum HandleNotification {
 
 pub struct MessageInbox {
     msg_rx: async_channel::Receiver<SerialMessage>,
-    msg_queue: Arc<Mutex<VecDeque<(Instant, Box<SerialMessage>)>>>,
+    msg_queue: Arc<Mutex<MessageQueue>>,
     notification_tx: Sender<HandleNotification>,
     notification_rx: Receiver<HandleNotification>,
     msg_expiration_duration: Option<Duration>,
@@ -23,8 +24,8 @@ pub struct MessageInbox {
 
 #[derive(Clone)]
 pub struct InboxHandle {
-    msg_queue: Weak<Mutex<VecDeque<(Instant, Box<SerialMessage>)>>>,
-    notification_rx: RefCell<Receiver<HandleNotification>>,
+    msg_queue: Weak<Mutex<MessageQueue>>,
+    notification_rx: Receiver<HandleNotification>,
 }
 
 impl MessageInbox {
@@ -45,7 +46,7 @@ impl MessageInbox {
     pub fn get_handle(&self) -> InboxHandle {
         InboxHandle {
             msg_queue: Arc::downgrade(&self.msg_queue),
-            notification_rx: RefCell::new(self.notification_rx.clone()),
+            notification_rx: self.notification_rx.clone(),
         }
     }
 
@@ -57,10 +58,10 @@ impl MessageInbox {
             {
                 let mut msg_queue = self.msg_queue.lock().unwrap();
                 tracing::debug!("Inbox got {:?}", msg.as_ref());
-                msg_queue.push_back((std::time::Instant::now(), Box::new(msg)));
+                msg_queue.push_back((std::time::Instant::now(), Box::new(msg), false));
 
                 if let Some(expiration_age) = self.msg_expiration_duration {
-                    while let Some((receive_time, _msg)) = msg_queue.get(0) {
+                    while let Some((receive_time, _msg, _)) = msg_queue.front() {
                         if receive_time.elapsed() > expiration_age {
                             let _ = msg_queue.pop_front();
                         } else {
@@ -88,16 +89,18 @@ impl MessageInbox {
 
 impl InboxHandle {
     pub async fn wait_for_message(
-        &self,
-        matcher: Box<dyn Fn(&SerialMessage) -> bool>,
+        &mut self,
+        matcher: Box<dyn Fn(&SerialMessage) -> bool + Send + Sync>,
         timeout: Option<Duration>,
     ) -> Option<SerialMessage> {
+        let start_time = Instant::now() - Duration::from_millis(10);
         let timeout_instant = timeout.map(|duration| std::time::Instant::now() + duration);
         loop {
             let msg = if let Some(msg_queue) = self.msg_queue.upgrade() {
-                let queue = msg_queue.lock().expect("Mutex locks");
-                let msg = queue.iter().find_map(|(_received_time, msg)| {
-                    if matcher(msg) {
+                let mut queue = msg_queue.lock().expect("Mutex locks");
+                let msg = queue.iter_mut().find_map(|(received_time, msg, matched)| {
+                    if matcher(msg) && *received_time > start_time && !*matched {
+                        *matched = true;
                         Some(msg.clone())
                     } else {
                         None
@@ -115,17 +118,12 @@ impl InboxHandle {
                 tracing::trace!("No match, waiting for new messages");
                 let notification = if let Some(timeout_instant) = timeout_instant {
                     let time_left = timeout_instant - std::time::Instant::now();
-                    match tokio::time::timeout(
-                        time_left,
-                        self.notification_rx.borrow_mut().changed(),
-                    )
-                    .await
-                    {
-                        Ok(Ok(())) => *self.notification_rx.borrow_mut().borrow_and_update(),
+                    match tokio::time::timeout(time_left, self.notification_rx.changed()).await {
+                        Ok(Ok(())) => *self.notification_rx.borrow_and_update(),
                         Ok(Err(_)) | Err(_) => break None,
                     }
                 } else {
-                    *self.notification_rx.borrow_mut().borrow_and_update()
+                    *self.notification_rx.borrow_and_update()
                 };
 
                 match notification {
@@ -143,18 +141,21 @@ impl InboxHandle {
 
     pub fn check_for_message_since(
         &self,
-        matcher: Box<dyn Fn(&SerialMessage) -> bool>,
+        matcher: Box<dyn Fn(&SerialMessage) -> bool + Send + Sync>,
         start_time: Instant,
     ) -> Option<SerialMessage> {
         if let Some(msg_queue) = self.msg_queue.upgrade() {
-            let msg_queue = msg_queue.lock().expect("Mutex locks");
-            msg_queue.iter().find_map(|(receive_time, msg)| {
-                if *receive_time >= start_time && matcher(msg.as_ref()) {
-                    Some(*msg.clone())
-                } else {
-                    None
-                }
-            })
+            let mut msg_queue = msg_queue.lock().expect("Mutex locks");
+            msg_queue
+                .iter_mut()
+                .find_map(|(receive_time, msg, matched)| {
+                    if *receive_time >= start_time && matcher(msg.as_ref()) {
+                        *matched = true;
+                        Some(*msg.clone())
+                    } else {
+                        None
+                    }
+                })
         } else {
             None
         }

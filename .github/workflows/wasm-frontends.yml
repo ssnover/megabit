@@ -1,0 +1,41 @@
+name: wasm-frontends-build
+
+on:
+  pull_request:
+    paths:
+      - 'console/frontend/**'
+      - 'simulator/frontend/**'
+      - 'runner/runner_msgs/**'
+      - 'simulator/sim_msgs/**'
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  format:
+    name: Check formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Format Console frontend
+        run: cargo fmt --all --check --manifest-path console/frontend/Cargo.toml
+      - name: Format Simulator frontend
+        run: cargo fmt --all --check --manifest-path simulator/frontend/Cargo.toml
+  
+  build:
+    name: Build WASM frontends
+    needs: [format]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: "wasm32-unknown-unknown"
+      - name: Build console frontend
+        run: cargo build --release --manifest-path console/frontend/Cargo.toml
+      - name: Build simulator frontend
+        run: cargo build --release --manifest-path simulator/frontend/Cargo.toml

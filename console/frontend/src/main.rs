@@ -1,6 +1,10 @@
+use websocket_provider::WebsocketProvider;
 use yew::functional::*;
 use yew::prelude::*;
 use yew_router::prelude::*;
+
+mod tabs;
+mod websocket_provider;
 
 #[function_component(App)]
 fn app() -> Html {
@@ -18,8 +22,14 @@ enum Route {
 }
 
 fn switch(routes: Route) -> Html {
-    match routes {
-        Route::Control => html! { <h1>{ "Control Panel" }</h1> },
+    let page_contents = match routes {
+        Route::Control => html! { <tabs::ControlPage></tabs::ControlPage> },
+    };
+
+    html! {
+        <WebsocketProvider>
+            { page_contents }
+        </WebsocketProvider>
     }
 }
 

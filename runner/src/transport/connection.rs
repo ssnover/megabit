@@ -38,15 +38,16 @@ impl Connection {
 
     pub async fn wait_for_message(
         &self,
-        matcher: Box<dyn Fn(&SerialMessage) -> bool>,
+        matcher: Box<dyn Fn(&SerialMessage) -> bool + Send + Sync>,
         timeout: Option<Duration>,
     ) -> Option<SerialMessage> {
-        self.inbox_handle.wait_for_message(matcher, timeout).await
+        let mut inbox_handle = self.inbox_handle.clone();
+        inbox_handle.wait_for_message(matcher, timeout).await
     }
 
     pub fn check_for_message_since(
         &self,
-        matcher: Box<dyn Fn(&SerialMessage) -> bool>,
+        matcher: Box<dyn Fn(&SerialMessage) -> bool + Send + Sync>,
         start_time: Instant,
     ) -> Option<SerialMessage> {
         self.inbox_handle
@@ -226,7 +227,7 @@ impl SyncConnection {
 
     pub fn wait_for_message(
         &self,
-        matcher: Box<dyn Fn(&SerialMessage) -> bool>,
+        matcher: Box<dyn Fn(&SerialMessage) -> bool + Send + Sync>,
         timeout: Option<Duration>,
     ) -> Option<SerialMessage> {
         self.rt
@@ -235,7 +236,7 @@ impl SyncConnection {
 
     pub fn check_for_message_since(
         &self,
-        matcher: Box<dyn Fn(&SerialMessage) -> bool>,
+        matcher: Box<dyn Fn(&SerialMessage) -> bool + Send + Sync>,
         start_time: Instant,
     ) -> Option<SerialMessage> {
         self.inner.check_for_message_since(matcher, start_time)

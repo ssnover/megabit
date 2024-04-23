@@ -1,10 +1,12 @@
 use clap::Parser;
 use megabit_runner::{
+    api_server,
     display::{DisplayConfiguration, PixelRepresentation},
+    events::EventListener,
     transport::{self, DeviceTransport},
-    wasm_env::{self, WasmAppRunner},
+    wasm_env::{self, AppManifest},
+    Runner,
 };
-use megabit_serial_protocol::SerialMessage;
 use std::path::PathBuf;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -24,7 +26,7 @@ fn main() -> anyhow::Result<()> {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                "megabit_runner=debug,megabit_runner::wasm_env::host_functions::host=info".into()
+                "megabit_runner=debug,megabit_runner::wasm_env::host_functions::host=info,megabit_runner::transport=debug".into()
             }),
         )
         .with(tracing_subscriber::fmt::layer())
@@ -35,11 +37,11 @@ fn main() -> anyhow::Result<()> {
         .build()?;
 
     let (serial_conn, serial_task) = transport::start_transport_task(args.device);
-    let serial_conn = transport::SyncConnection::new(serial_conn, rt.handle().clone());
+    let sync_serial_conn = transport::SyncConnection::new(serial_conn.clone(), rt.handle().clone());
 
     let _serial_task_handle = rt.spawn(Box::into_pin(serial_task));
 
-    let display_info = serial_conn.get_display_info()?;
+    let display_info = sync_serial_conn.get_display_info()?;
     let display_info = DisplayConfiguration {
         width: display_info.width as usize,
         height: display_info.height as usize,
@@ -58,18 +60,13 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let mut wasm_apps = std::fs::read_dir(data_dir)?
-        .into_iter()
+    let wasm_apps = std::fs::read_dir(data_dir)?
         .map(|entry| {
             let entry = entry?;
             let path = entry.path();
             if path.is_dir() {
-                if let Ok(app) = wasm_env::WasmAppRunner::from_manifest(
-                    &path,
-                    serial_conn.clone(),
-                    display_info.clone(),
-                ) {
-                    tracing::info!("Found app {} at path: {}", app.name(), path.display());
+                if let Ok(app) = wasm_env::AppManifest::open(&path) {
+                    tracing::info!("Found app {} at path: {}", &app.app_name, path.display());
                     Ok(Some(app))
                 } else {
                     tracing::warn!("Unable to build app from bundle at {}", path.display());
@@ -79,54 +76,20 @@ fn main() -> anyhow::Result<()> {
                 Ok(None)
             }
         })
-        .filter_map(|app: anyhow::Result<Option<WasmAppRunner>>| match app {
+        .filter_map(|app: anyhow::Result<Option<AppManifest>>| match app {
             Ok(app) => app,
             Err(_) => None,
         })
         .collect::<Vec<_>>();
     tracing::info!("Found {} Megabit apps", wasm_apps.len());
 
-    let button_press_matcher =
-        Box::new(|msg: &SerialMessage| matches!(msg, &SerialMessage::ReportButtonPress));
+    let api_server_handle = api_server::start(8003, rt.handle().clone());
+    let event_listener = EventListener::new(serial_conn, api_server_handle, rt.handle().clone());
 
-    loop {
-        for wasm_app in wasm_apps.iter_mut() {
-            tracing::info!("Running app: {}", wasm_app.name());
-            wasm_app.setup_app()?;
+    let mut runner = Runner::new(wasm_apps, sync_serial_conn, display_info, event_listener)?;
+    runner.run();
 
-            if let Some(refresh_period) = wasm_app.refresh_period() {
-                loop {
-                    let start_time = std::time::Instant::now();
-                    tracing::debug!("Running");
-                    match wasm_app.run_app_once() {
-                        Ok(()) => {
-                            if start_time.elapsed() < refresh_period {
-                                std::thread::sleep(refresh_period - start_time.elapsed())
-                            }
-                        }
-                        Err(err) => {
-                            tracing::error!(
-                                "Running Wasm app {} failed: {err}, exiting",
-                                wasm_app.name()
-                            );
-                            break;
-                        }
-                    }
-                    if serial_conn
-                        .check_for_message_since(button_press_matcher.clone(), start_time)
-                        .is_some()
-                    {
-                        tracing::info!("Button pressed, moving to next app");
-                        break;
-                    }
-                }
-            } else {
-                // Render and then wait for button press
-                if let Ok(()) = wasm_app.run_app_once() {
-                    tracing::debug!("Waiting for button press");
-                    serial_conn.wait_for_message(button_press_matcher.clone(), None);
-                }
-            }
-        }
-    }
+    tracing::info!("Exiting runner");
+
+    Ok(())
 }

@@ -113,16 +113,13 @@ fn main() -> anyhow::Result<()> {
 fn check_for_app_file_change(inotify: &mut Inotify) -> bool {
     let mut buffer = [0u8; 4096];
     if let Ok(events) = inotify.read_events(&mut buffer) {
-        events
-            .into_iter()
-            .find(|event| {
-                tracing::info!("Event mask: {:?}", event.mask);
-                event.mask.contains(EventMask::MODIFY)
-                    || event.mask.contains(EventMask::CREATE)
-                    || event.mask.contains(EventMask::DELETE)
-                    || event.mask.contains(EventMask::ATTRIB)
-            })
-            .is_some()
+        events.into_iter().any(|event| {
+            tracing::info!("Event mask: {:?}", event.mask);
+            event.mask.contains(EventMask::MODIFY)
+                || event.mask.contains(EventMask::CREATE)
+                || event.mask.contains(EventMask::DELETE)
+                || event.mask.contains(EventMask::ATTRIB)
+        })
     } else {
         false
     }
