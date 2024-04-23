@@ -7,6 +7,7 @@ on:
       - 'simulator/frontend/**'
       - 'runner/runner_msgs/**'
       - 'simulator/sim_msgs/**'
+      - '.github/workflows/wasm-frontends.yml'
   push:
     branches:
       - main
