@@ -1,0 +1,48 @@
+name: example-apps-build
+
+on:
+  pull_request:
+    paths:
+      - 'app-sdk/**'
+      - 'example-apps/**'
+      - '.github/workflows/example-apps.yml'
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  format:
+    name: Check formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: "Format example app: Game of Life"
+        run: cargo fmt --all --check --manifest-path example-apps/game-of-life/Cargo.toml
+      - name: "Format example app: Hello World"
+        run: cargo fmt --all --check --manifest-path example-apps/hello-world/Cargo.toml 
+      - name: "Format example app: Nyan Cat"
+        run: cargo fmt --all --check --manifest-path example-apps/nyan-cat/Cargo.toml
+      - name: "Format example app: Scrolling Text"
+        run: cargo fmt --all --check --manifest-path example-apps/scrolling-text/Cargo.toml
+
+  build:
+    name: Build example apps
+    needs: [format]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: "wasm32-unknown-unknown,wasm32-wasi"
+      - name: Build Game of Life
+        run: cargo build --release --manifest-path example-apps/game-of-life/Cargo.toml
+      - name: Build Hello World
+        run: cargo build --release --manifest-path example-apps/hello-world/Cargo.toml
+      - name: Build Nyan Cat
+        run: cargo build --release --manifest-path example-apps/nyan-cat/Cargo.toml
+      - name: Build Scrolling Text
+        run: cargo build --release --manifest-path example-apps/scrolling-text/Cargo.toml
