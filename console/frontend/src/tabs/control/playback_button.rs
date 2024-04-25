@@ -1,3 +1,4 @@
+use crate::utils::Button;
 use crate::websocket_provider::use_websocket;
 use megabit_runner_msgs::ConsoleMessage;
 use yew::{function_component, html, Callback, Html, Properties};
@@ -16,11 +17,7 @@ pub fn playback_button(_props: &PlaybackButtonProperties) -> Html {
     };
 
     html! {
-        <div style="margin: 10px">
-            <button onclick={on_click}>
-                <p>{"Play/Pause Button"}</p>
-            </button>
-        </div>
+        <Button text={"Play/Pause Button"} on_click_cb={on_click} />
     }
 }
 

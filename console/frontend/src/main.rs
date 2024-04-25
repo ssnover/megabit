@@ -4,6 +4,7 @@ use yew::prelude::*;
 use yew_router::prelude::*;
 
 mod tabs;
+mod utils;
 mod websocket_provider;
 
 #[function_component(App)]
@@ -23,7 +24,7 @@ enum Route {
 
 fn switch(routes: Route) -> Html {
     let page_contents = match routes {
-        Route::Control => html! { <tabs::ControlPage></tabs::ControlPage> },
+        Route::Control => html! { <tabs::ControlPage /> },
     };
 
     html! {
