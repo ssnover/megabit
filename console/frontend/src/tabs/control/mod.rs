@@ -8,7 +8,7 @@ pub fn control_page() -> Html {
     html! {
         <div>
             <h1>{ "Control Page" }</h1>
-            <PlaybackButton></PlaybackButton>
+            <PlaybackButton/>
         </div>
 
     }
