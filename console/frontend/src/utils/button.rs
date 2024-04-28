@@ -5,9 +5,9 @@ pub fn button(props: &ButtonProps) -> Html {
     let props = props.clone();
 
     html! {
-        <div style="margin: 10px">
-            <button onclick={props.on_click_cb}>
-                <p>{props.text}</p>
+        <div>
+            <button type="button" class="btn btn-primary" onclick={props.on_click_cb}>
+                {props.text}
             </button>
         </div>
     }
