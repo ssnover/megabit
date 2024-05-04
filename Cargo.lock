@@ -1475,6 +1475,7 @@ dependencies = [
  "md-5",
  "megabit-runner-msgs",
  "megabit-serial-protocol",
+ "megabit-utils",
  "serde",
  "serde_json",
  "tokio",
@@ -1489,6 +1490,8 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "strum",
+ "strum_macros 0.25.3",
 ]
 
 [[package]]

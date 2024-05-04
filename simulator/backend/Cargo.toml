@@ -11,7 +11,7 @@ cobs = { version = "0.2" }
 gif = "0.13"
 megabit-serial-protocol = { path = "../../serial-protocol" }
 megabit-sim-msgs = { path = "../sim_msgs" }
-megabit-utils = { path = "../../utils" }
+megabit-utils = { path = "../../utils", features = ["web-server"] }
 nix = { version = "0.27", features = ["term"] }
 rmp-serde = "1.1"
 serde = { version = "1", features = ["derive"] }

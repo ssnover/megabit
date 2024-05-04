@@ -14,6 +14,8 @@ use yew::{
     ContextProvider, Html, Properties, UseStateHandle,
 };
 
+use super::{msg_subscriber_provider::SubscriptionManager, use_subscription_manager};
+
 #[hook]
 pub fn use_websocket() -> WebsocketHandle {
     use_context().unwrap()
@@ -32,6 +34,8 @@ impl WebsocketHandle {
 
 #[function_component]
 pub fn WebsocketProvider(props: &WebsocketProviderProps) -> Html {
+    let subscription_manager = use_subscription_manager();
+
     let connection = use_state(|| {
         let endpoint = if let (Ok(hostname), Ok(port)) =
             (window().location().hostname(), window().location().port())
@@ -54,7 +58,7 @@ pub fn WebsocketProvider(props: &WebsocketProviderProps) -> Html {
         };
         move || {
             spawn_local(async move {
-                start_ws_context(connection).await;
+                start_ws_context(connection, subscription_manager).await;
             });
         }
     });
@@ -107,19 +111,19 @@ impl WebsocketConnection {
         let mut reader = self.inner.1.try_borrow_mut().unwrap();
         reader.next().await
     }
-
-    pub fn route_message(&self, msg: Vec<u8>) {
-        let msg = std::str::from_utf8(msg.as_slice()).unwrap_or("Non-UTF8 str");
-        log::info!("Received msg: {msg}");
-    }
 }
 
-async fn start_ws_context(connection: WebsocketConnection) {
+async fn start_ws_context(
+    connection: WebsocketConnection,
+    subscription_manager: SubscriptionManager,
+) {
     loop {
         if let Some(msg) = connection.read().await {
             match msg {
                 Ok(Message::Bytes(msg)) => {
-                    connection.route_message(msg);
+                    if let Ok(msg) = serde_json::from_slice(&msg[..]) {
+                        subscription_manager.handle_message(msg);
+                    }
                 }
                 Ok(_) => {
                     log::debug!("Got a non-bytes WebSocket message");

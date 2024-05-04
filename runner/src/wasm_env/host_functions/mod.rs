@@ -95,38 +95,33 @@ pub fn with_kv_functions<'a>(
 extism::host_fn!(pub write_region(user_data: PersistentData; position_x: u32, position_y: u32, width: u32, height: u32, buffer_data: Vec<u8>) {
     let data = user_data.get()?;
     let data = data.lock().unwrap();
-    let mut screen_buffer = data.screen_buffer.borrow_mut();
-    display::write_region(&mut screen_buffer, position_x, position_y, width, height, buffer_data)
+    display::write_region(&data.screen_buffer, position_x, position_y, width, height, buffer_data)
 });
 
 extism::host_fn!(pub write_region_rgb(user_data: PersistentData; position_x: u32, position_y: u32, width: u32, height: u32, buffer_data: Vec<u8>) {
     let data = user_data.get()?;
     let data = data.lock().unwrap();
-    let mut screen_buffer = data.screen_buffer.borrow_mut();
-    display::write_region_rgb(&mut screen_buffer, position_x, position_y, width, height, buffer_data)
+    display::write_region_rgb(&data.screen_buffer, position_x, position_y, width, height, buffer_data)
 });
 
 extism::host_fn!(pub render(user_data: PersistentData; rows_to_update: Vec<u8>) {
     let data = user_data.get()?;
     let data = data.lock().unwrap();
-    let mut screen_buffer = data.screen_buffer.borrow_mut();
-    let serial_conn = data.serial_conn.clone();
-    display::render(&mut screen_buffer, serial_conn, rows_to_update)
+    let serial_conn = data.conn.clone();
+    display::render(&data.screen_buffer, &data.api_server, serial_conn, rows_to_update)
 });
 
 extism::host_fn!(pub set_monocolor_palette(user_data: PersistentData; on_color: u32, off_color: u32) {
     let data = user_data.get()?;
     let data = data.lock().unwrap();
-    let mut screen_buffer = data.screen_buffer.borrow_mut();
-    let serial_conn = data.serial_conn.clone();
-    display::set_monocolor_palette(&mut screen_buffer, serial_conn, (on_color & 0xffff) as u16, (off_color & 0xffff) as u16)
+    let serial_conn = data.conn.clone();
+    display::set_monocolor_palette(&data.screen_buffer, serial_conn, ((on_color & 0xffff) as u16).into(), ((off_color & 0xffff) as u16).into())
 });
 
 extism::host_fn!(pub get_display_info(user_data: PersistentData;) -> Vec<u8> {
     let data = user_data.get()?;
     let data = data.lock().unwrap();
-    let screen_buffer = data.screen_buffer.borrow();
-    let config = display::get_display_info(&screen_buffer)?;
+    let config = display::get_display_info(&data.screen_buffer)?;
     Ok([
         &(config.width as u32).to_be_bytes()[..],
         &(config.height as u32).to_be_bytes()[..],

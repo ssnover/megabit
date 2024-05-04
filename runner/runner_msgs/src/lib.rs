@@ -1,15 +1,24 @@
 use serde::{Deserialize, Serialize};
+use strum::AsRefStr;
 
 #[non_exhaustive]
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, AsRefStr)]
 #[serde(tag = "msg", content = "data")]
 pub enum ConsoleMessage {
+    CommitRender,
     PauseRendering,
     ResumeRendering,
     NextApp,
     PreviousApp,
+    SetMatrixRowRgb(SetMatrixRowRgb),
     #[cfg(test)]
     TestMessage(TestMessage),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SetMatrixRowRgb {
+    pub row: usize,
+    pub data: Vec<u16>,
 }
 
 #[cfg(test)]
