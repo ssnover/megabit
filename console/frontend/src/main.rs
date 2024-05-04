@@ -1,11 +1,11 @@
-use websocket_provider::WebsocketProvider;
+use providers::ConsoleProviders;
 use yew::functional::*;
 use yew::prelude::*;
 use yew_router::prelude::*;
 
+mod providers;
 mod tabs;
 mod utils;
-mod websocket_provider;
 
 #[function_component(App)]
 fn app() -> Html {
@@ -28,13 +28,13 @@ fn switch(routes: Route) -> Html {
     };
 
     html! {
-        <WebsocketProvider>
+        <ConsoleProviders>
             { page_contents }
-        </WebsocketProvider>
+        </ConsoleProviders>
     }
 }
 
 fn main() {
-    wasm_logger::init(wasm_logger::Config::new(log::Level::Info));
+    wasm_logger::init(wasm_logger::Config::new(log::Level::Debug));
     yew::Renderer::<App>::new().render();
 }

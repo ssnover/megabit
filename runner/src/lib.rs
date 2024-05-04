@@ -1,4 +1,5 @@
-use display::DisplayConfiguration;
+use api_server::ApiServerHandle;
+use display::ScreenBufferHandle;
 use events::{Event, EventListener};
 use std::{io, time::Duration};
 use transport::SyncConnection;
@@ -17,26 +18,34 @@ pub struct Runner {
     is_running: bool,
     current_runner: (usize, WasmAppRunner),
     serial_conn: SyncConnection,
-    display_info: DisplayConfiguration,
+    screen_buffer: ScreenBufferHandle,
     event_listener: EventListener,
+    api_server: ApiServerHandle,
 }
 
 impl Runner {
     pub fn new(
         apps: Vec<AppManifest>,
         serial_conn: SyncConnection,
-        display_info: DisplayConfiguration,
+        screen_buffer: ScreenBufferHandle,
         event_listener: EventListener,
+        api_server: ApiServerHandle,
     ) -> io::Result<Self> {
         if !apps.is_empty() {
-            let initial_app = Self::load_app(&apps[0], serial_conn.clone(), display_info.clone())?;
+            let initial_app = Self::load_app(
+                &apps[0],
+                serial_conn.clone(),
+                screen_buffer.clone(),
+                api_server.clone(),
+            )?;
             Ok(Self {
                 apps,
                 is_running: true,
                 current_runner: (0, initial_app),
                 serial_conn,
-                display_info,
+                screen_buffer,
                 event_listener,
+                api_server,
             })
         } else {
             todo!("Needs at least one app, write a default app for the future");
@@ -48,9 +57,11 @@ impl Runner {
         let app = Self::load_app(
             &self.apps[next_idx],
             self.serial_conn.clone(),
-            self.display_info.clone(),
+            self.screen_buffer.clone(),
+            self.api_server.clone(),
         )?;
         self.current_runner = (next_idx, app);
+        self.is_running = true;
         Ok(())
     }
 
@@ -63,21 +74,25 @@ impl Runner {
         let app = Self::load_app(
             &self.apps[prev_idx],
             self.serial_conn.clone(),
-            self.display_info.clone(),
+            self.screen_buffer.clone(),
+            self.api_server.clone(),
         )?;
         self.current_runner = (prev_idx, app);
+        self.is_running = true;
         Ok(())
     }
 
     fn load_app(
         manifest: &AppManifest,
         serial_conn: SyncConnection,
-        display_info: DisplayConfiguration,
+        screen_buffer: ScreenBufferHandle,
+        api_server: ApiServerHandle,
     ) -> io::Result<WasmAppRunner> {
         WasmAppRunner::from_manifest(
             &manifest.app_bin_path.parent().unwrap(),
             serial_conn,
-            display_info,
+            screen_buffer,
+            api_server,
         )
         .map_err(|err| {
             tracing::error!(

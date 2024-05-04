@@ -1,7 +1,8 @@
 use clap::Parser;
 use inotify::{EventMask, Inotify, WatchMask};
 use megabit_runner::{
-    display::{DisplayConfiguration, PixelRepresentation},
+    api_server,
+    display::{DisplayConfiguration, PixelRepresentation, ScreenBuffer},
     transport::{self, DeviceTransport},
     wasm_env,
 };
@@ -38,6 +39,7 @@ fn main() -> anyhow::Result<()> {
 
     let (serial_conn, serial_task) = transport::start_transport_task(args.device);
     let serial_conn = transport::SyncConnection::new(serial_conn, rt.handle().clone());
+    let api_server_handle = api_server::start(8003, rt.handle().clone());
 
     let _serial_task_handle = rt.spawn(Box::into_pin(serial_task));
 
@@ -51,6 +53,7 @@ fn main() -> anyhow::Result<()> {
         ),
     };
     tracing::info!("Retrieved info about the display: {display_info:?}");
+    let screen_buffer = ScreenBuffer::create(display_info.width, display_info.height);
 
     let mut inotify = Inotify::init().unwrap();
     inotify
@@ -71,7 +74,8 @@ fn main() -> anyhow::Result<()> {
             args.refresh.map(Duration::from_millis),
             "Demo",
             serial_conn.clone(),
-            display_info.clone(),
+            screen_buffer.clone(),
+            api_server_handle.clone(),
         )?;
         tracing::info!("Running app: {}", wasm_app.name());
         wasm_app.setup_app()?;

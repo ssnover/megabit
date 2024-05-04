@@ -3,10 +3,15 @@ name = "megabit-utils"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = ["rgb555"]
+web-server = ["dep:async-channel", "dep:axum", "dep:futures-util", "dep:tokio", "dep:tower-http", "dep:tracing"]
+rgb555 = []
+
 [dependencies]
-async-channel = { version = "2.1" }
-axum = { version = "0.7.5", features = ["ws", "tokio"] }
-futures-util = { version = "0.3" }
-tokio = { version = "1.0", features = ["full"] }
-tower-http = { version = "0.5.0", features = ["fs", "trace"] }
-tracing = { version = "0.1" }
+async-channel = { version = "2.1", optional = true }
+axum = { version = "0.7.5", features = ["ws", "tokio"], optional = true }
+futures-util = { version = "0.3", optional = true }
+tokio = { version = "1.0", features = ["full"], optional = true }
+tower-http = { version = "0.5.0", features = ["fs", "trace"], optional = true }
+tracing = { version = "0.1", optional = true }

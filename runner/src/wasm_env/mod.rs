@@ -1,8 +1,5 @@
 use self::host_functions::with_host_functions;
-use crate::{
-    display::{DisplayConfiguration, ScreenBuffer},
-    transport::SyncConnection,
-};
+use crate::{api_server::ApiServerHandle, display::ScreenBufferHandle, transport::SyncConnection};
 pub use app_manifest::AppManifest;
 use std::{cell::RefCell, collections::BTreeMap, io, path::Path, rc::Rc, time::Duration};
 
@@ -12,25 +9,25 @@ mod host_functions;
 pub type KvStore = BTreeMap<String, Vec<u8>>;
 
 struct PersistentData {
-    screen_buffer: Rc<RefCell<ScreenBuffer>>,
+    screen_buffer: ScreenBufferHandle,
     kv_store: Rc<RefCell<KvStore>>,
-    serial_conn: SyncConnection,
+    conn: SyncConnection,
+    api_server: ApiServerHandle,
 }
 
 impl PersistentData {
-    fn new(serial_conn: SyncConnection, display_cfg: DisplayConfiguration) -> Self {
-        let screen_buffer = Rc::new(RefCell::new(ScreenBuffer::new(
-            display_cfg.width,
-            display_cfg.height,
-            display_cfg.is_rgb,
-            None,
-        )));
+    fn new(
+        conn: SyncConnection,
+        screen_buffer: ScreenBufferHandle,
+        api_server: ApiServerHandle,
+    ) -> Self {
         let kv_store = Rc::new(RefCell::new(BTreeMap::new()));
 
         PersistentData {
             screen_buffer,
             kv_store,
-            serial_conn,
+            conn,
+            api_server,
         }
     }
 }
@@ -71,10 +68,12 @@ impl WasmAppRunner {
         refresh_period: Option<Duration>,
         app_name: impl Into<String>,
         serial_conn: SyncConnection,
-        display_cfg: DisplayConfiguration,
+        screen_buffer: ScreenBufferHandle,
+        api_server: ApiServerHandle,
     ) -> anyhow::Result<Self> {
         let wasm_app_bin = extism::Wasm::file(wasm_bin_path);
-        let user_data = extism::UserData::new(PersistentData::new(serial_conn, display_cfg));
+        let user_data =
+            extism::UserData::new(PersistentData::new(serial_conn, screen_buffer, api_server));
         let manifest = extism::Manifest::new([wasm_app_bin]);
         let plugin = with_host_functions(extism::PluginBuilder::new(manifest), &user_data)
             .with_wasi(true)
@@ -90,7 +89,8 @@ impl WasmAppRunner {
     pub fn from_manifest(
         app_path: impl AsRef<Path>,
         serial_conn: SyncConnection,
-        display_cfg: DisplayConfiguration,
+        screen_buffer: ScreenBufferHandle,
+        api_server: ApiServerHandle,
     ) -> anyhow::Result<Self> {
         let app_manifest = AppManifest::open(app_path)?;
         Self::new(
@@ -98,7 +98,8 @@ impl WasmAppRunner {
             app_manifest.refresh_period,
             app_manifest.app_name,
             serial_conn,
-            display_cfg,
+            screen_buffer,
+            api_server,
         )
     }
 

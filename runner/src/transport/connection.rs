@@ -1,6 +1,7 @@
 use super::{msg_inbox::InboxHandle, tasks::SerialTaskRequest};
 use async_channel::Sender;
 use megabit_serial_protocol::*;
+use megabit_utils::rgb555::Rgb555;
 use std::{
     io,
     time::{Duration, Instant},
@@ -194,10 +195,10 @@ impl Connection {
 
     pub async fn set_monocolor_palette(
         &self,
-        color: u16,
+        color: Rgb555,
     ) -> io::Result<SetMonocolorPaletteResponse> {
         self.send_message(SerialMessage::SetMonocolorPalette(SetMonocolorPalette {
-            color,
+            color: color.into(),
         }))
         .await?;
         let msg = self
@@ -272,7 +273,7 @@ impl SyncConnection {
         self.rt.block_on(self.inner.commit_render())
     }
 
-    pub fn set_monocolor_palette(&self, color: u16) -> io::Result<SetMonocolorPaletteResponse> {
+    pub fn set_monocolor_palette(&self, color: Rgb555) -> io::Result<SetMonocolorPaletteResponse> {
         self.rt.block_on(self.inner.set_monocolor_palette(color))
     }
 }

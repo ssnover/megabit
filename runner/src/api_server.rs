@@ -6,13 +6,17 @@ use std::{
     sync::Arc,
 };
 use tokio::{
-    io::AsyncReadExt,
-    net::{TcpListener, TcpStream},
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::{
+        tcp::{OwnedReadHalf, OwnedWriteHalf},
+        TcpListener, TcpStream,
+    },
     task::JoinHandle,
 };
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ApiServerHandle {
+    tx: Sender<ConsoleMessage>,
     rx: Receiver<ConsoleMessage>,
     _handle: Arc<JoinHandle<()>>,
 }
@@ -29,14 +33,24 @@ impl ApiServerHandle {
     pub async fn next(&self) -> anyhow::Result<ConsoleMessage> {
         Ok(self.rx.recv().await?)
     }
+
+    pub fn send_blocking(&self, msg: ConsoleMessage) -> anyhow::Result<()> {
+        Ok(self.tx.send_blocking(msg)?)
+    }
+
+    pub async fn send(&self, msg: ConsoleMessage) -> anyhow::Result<()> {
+        Ok(self.tx.send(msg).await?)
+    }
 }
 
 pub fn start(api_port: u16, rt: tokio::runtime::Handle) -> ApiServerHandle {
     tracing::info!("Starting API server");
+    let (server_tx, server_rx) = async_channel::unbounded();
     let (tx, rx) = async_channel::bounded(100);
-    let handle = rt.spawn(listen_for_api_commands(api_port, rt.clone(), tx));
+    let handle = rt.spawn(listen_for_api_commands(api_port, rt.clone(), tx, server_rx));
 
     ApiServerHandle {
+        tx: server_tx,
         rx,
         _handle: Arc::new(handle),
     }
@@ -46,9 +60,10 @@ async fn listen_for_api_commands(
     port: u16,
     rt: tokio::runtime::Handle,
     tx: Sender<ConsoleMessage>,
+    rx: Receiver<ConsoleMessage>,
 ) {
     tracing::debug!("Starting listener context");
-    if let Err(err) = listen_context(port, rt, tx).await {
+    if let Err(err) = listen_context(port, rt, tx, rx).await {
         tracing::error!("API server shutting down: {err:?}");
     }
 }
@@ -57,6 +72,7 @@ async fn listen_context(
     port: u16,
     rt: tokio::runtime::Handle,
     tx: Sender<ConsoleMessage>,
+    rx: Receiver<ConsoleMessage>,
 ) -> io::Result<()> {
     let addr = format!("0.0.0.0:{port}");
     let listener = TcpListener::bind(addr).await?;
@@ -69,17 +85,37 @@ async fn listen_context(
     loop {
         let (stream, peer) = listener.accept().await?;
         tracing::info!("Received connection from client at {peer}");
-        rt.spawn(connection_context(peer, stream, tx.clone()));
+        // TODO: async_channel::Receiver consume messages, they don't each get a copy, this prevents multiple connections from stably working
+        // Perhaps this could be solved with an additional task which takes ownership of the receiver and broadcasts to all of another type
+        // of spmc channel
+        rt.spawn(connection_context(peer, stream, tx.clone(), rx.clone()));
     }
 }
 
-async fn connection_context(peer: SocketAddr, mut stream: TcpStream, tx: Sender<ConsoleMessage>) {
+async fn connection_context(
+    peer: SocketAddr,
+    stream: TcpStream,
+    tx: Sender<ConsoleMessage>,
+    rx: Receiver<ConsoleMessage>,
+) {
     tracing::debug!("Creating connection to peer {peer}");
 
+    let (reader, writer) = stream.into_split();
+    tokio::join!(
+        connection_listen_context(peer, reader, tx),
+        connection_report_context(peer, writer, rx)
+    );
+}
+
+async fn connection_listen_context(
+    peer: SocketAddr,
+    mut reader: OwnedReadHalf,
+    tx: Sender<ConsoleMessage>,
+) {
     let mut buffer_fill = 0;
     let mut byte_buffer = Vec::with_capacity(1024 * 16);
     loop {
-        match stream.read_buf(&mut byte_buffer).await {
+        match reader.read_buf(&mut byte_buffer).await {
             Ok(bytes_read) => {
                 buffer_fill += bytes_read;
             }
@@ -129,6 +165,38 @@ async fn connection_context(peer: SocketAddr, mut stream: TcpStream, tx: Sender<
     }
 
     tracing::info!("Exiting connection");
+}
+
+async fn connection_report_context(
+    peer: SocketAddr,
+    mut writer: OwnedWriteHalf,
+    rx: Receiver<ConsoleMessage>,
+) {
+    loop {
+        match rx.recv().await {
+            Ok(console_msg) => {
+                tracing::debug!("Sending message {console_msg:?} to peer {peer}");
+                let msg =
+                    serde_json::to_vec(&console_msg).expect("Able to serialize console message");
+                let mut attempts = 0;
+                while attempts < 3 {
+                    if let Err(err) = writer.write_all(&msg).await {
+                        attempts += 1;
+                        tracing::error!(
+                            "Failed to send console message to peer {peer}: {err:?} ({attempts}/3)"
+                        );
+                    } else {
+                        break;
+                    }
+                }
+            }
+            Err(_err) => {
+                tracing::error!(
+                    "The console message report stream has closed, exiting report context"
+                );
+            }
+        }
+    }
 }
 
 fn check_for_json(data: &[u8]) -> Option<usize> {

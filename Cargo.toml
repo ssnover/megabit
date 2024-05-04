@@ -7,7 +7,7 @@ exclude = ["app-sdk", "coproc-embassy", "example-apps", "simulator/frontend", "c
 # Internal
 megabit-runner-msgs = { path = "runner/runner_msgs" }
 megabit-serial-protocol = { path = "serial-protocol" }
-megabit-utils = { path = "utils" }
+megabit-utils = { path = "utils", features = ["web-server"] }
 # External
 anyhow = { version = "1" }
 async-channel = { version = "2.1" }
