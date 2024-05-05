@@ -12,18 +12,18 @@ pub fn control_page() -> Html {
     let node_ref = NodeRef::default();
     let div_ref = node_ref.clone();
     html! {
-        <div class="container">
+        <div class="container bg-dark" style="padding-top: 75px; padding-bottom: 20px; height: 100%">
             <div class="row align-items-center">
                 <RunnerUi/>
             </div>
-            <div class="row align-items-center">
+            <div class="row">
                 <div class="col">
                 </div>
                 <div class="col-10">
-                    <div class="row align-items-center">
+                    <div class="row">
                         //<SimulatorUi/>
                     </div>
-                    <div ref={node_ref} class="row align-items-center" style="padding-top: 20px">
+                    <div ref={node_ref} class="row" style="padding-top: 20px">
                         <MatrixDisplay {div_ref} />
                     </div>
                 </div>
@@ -31,6 +31,5 @@ pub fn control_page() -> Html {
                 </div>
             </div>
         </div>
-
     }
 }

@@ -29,7 +29,7 @@ fn switch(route: navbar::Route) -> Html {
     html! {
         <>
             <Navbar/>
-            <div style={"padding-top: 60px"}>
+            <div style="height: 100%; background-color: var(--bs-primary-text-emphasis) !important">
                 { page_contents }
             </div>
         </>
