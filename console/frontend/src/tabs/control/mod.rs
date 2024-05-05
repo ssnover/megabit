@@ -1,6 +1,6 @@
 use matrix_display::MatrixDisplay;
 use runner_ui::RunnerUi;
-use simulator_ui::SimulatorUi;
+//use simulator_ui::SimulatorUi;
 use yew::{function_component, html, Html, NodeRef};
 
 mod matrix_display;
@@ -13,9 +13,6 @@ pub fn control_page() -> Html {
     let div_ref = node_ref.clone();
     html! {
         <div class="container">
-            <div class="row row-cols-1 align-items-center">
-                <h1>{ "Control Page" }</h1>
-            </div>
             <div class="row align-items-center">
                 <RunnerUi/>
             </div>
@@ -26,7 +23,7 @@ pub fn control_page() -> Html {
                     <div class="row align-items-center">
                         //<SimulatorUi/>
                     </div>
-                    <div ref={node_ref} class="row align-items-center">
+                    <div ref={node_ref} class="row align-items-center" style="padding-top: 20px">
                         <MatrixDisplay {div_ref} />
                     </div>
                 </div>
