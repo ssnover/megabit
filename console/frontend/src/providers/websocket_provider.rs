@@ -108,8 +108,11 @@ impl WebsocketConnection {
     }
 
     pub async fn read(&self) -> Option<Result<Message, WebSocketError>> {
-        let mut reader = self.inner.1.try_borrow_mut().unwrap();
-        reader.next().await
+        if let Ok(mut reader) = self.inner.1.try_borrow_mut() {
+            reader.next().await
+        } else {
+            None
+        }
     }
 }
 

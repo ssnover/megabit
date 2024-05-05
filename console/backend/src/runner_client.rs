@@ -10,19 +10,28 @@ pub async fn connect(
     from_ws_rx: Receiver<Vec<u8>>,
     to_ws_tx: Sender<Vec<u8>>,
 ) -> io::Result<()> {
-    let (stream_reader, stream_writer) = tokio::net::TcpStream::connect(("127.0.0.1", runner_port))
-        .await?
-        .into_split();
-    tokio::select! {
-        _ = writer_task(from_ws_rx, stream_writer) => {
-            tracing::debug!("Runner client writer exited");
-        },
-        _ = reader_task(to_ws_tx, stream_reader) => {
-            tracing::debug!("Runner client reader exited");
+    loop {
+        let (stream_reader, stream_writer) =
+            match tokio::net::TcpStream::connect(("127.0.0.1", runner_port)).await {
+                Ok(stream) => stream.into_split(),
+                Err(err) => {
+                    if let io::ErrorKind::ConnectionRefused = err.kind() {
+                        continue;
+                    } else {
+                        tracing::error!("Failed to connect to runner: {err:?}");
+                        return Err(err);
+                    }
+                }
+            };
+        tokio::select! {
+            _ = writer_task(from_ws_rx.clone(), stream_writer) => {
+                tracing::debug!("Runner client writer exited");
+            },
+            _ = reader_task(to_ws_tx.clone(), stream_reader) => {
+                tracing::debug!("Runner client reader exited");
+            }
         }
     }
-
-    Ok(())
 }
 
 async fn writer_task(
