@@ -1,9 +1,11 @@
 use clap::Parser;
 use inotify::{EventMask, Inotify, WatchMask};
 use megabit_runner::{
-    api_server,
     display::{DisplayConfiguration, PixelRepresentation, ScreenBuffer},
-    transport::{self, DeviceTransport},
+    streams::{
+        api_server,
+        coproc_client::{self, DeviceTransport},
+    },
     wasm_env,
 };
 use std::{path::PathBuf, time::Duration};
@@ -37,8 +39,8 @@ fn main() -> anyhow::Result<()> {
         .enable_all()
         .build()?;
 
-    let (serial_conn, serial_task) = transport::start_transport_task(args.device);
-    let serial_conn = transport::SyncConnection::new(serial_conn, rt.handle().clone());
+    let (serial_conn, serial_task) = coproc_client::start_transport_task(args.device);
+    let serial_conn = coproc_client::SyncConnection::new(serial_conn, rt.handle().clone());
     let api_server_handle = api_server::start(8003, rt.handle().clone());
 
     let _serial_task_handle = rt.spawn(Box::into_pin(serial_task));

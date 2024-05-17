@@ -1,16 +1,14 @@
-use api_server::ApiServerHandle;
 use apps::AppManifest;
 use display::ScreenBufferHandle;
 use events::{Event, EventListener};
 use std::{io, time::Duration};
-use transport::SyncConnection;
+use streams::{api_server::ApiServerHandle, coproc_client::SyncConnection};
 use wasm_env::WasmAppRunner;
 
-pub mod api_server;
 pub mod apps;
 pub mod display;
 pub mod events;
-pub mod transport;
+pub mod streams;
 pub mod wasm_env;
 
 const DEFAULT_RUN_PERIOD: Duration = Duration::from_secs(1);

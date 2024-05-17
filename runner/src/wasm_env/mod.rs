@@ -1,7 +1,8 @@
 use self::host_functions::with_host_functions;
 use crate::{
-    api_server::ApiServerHandle, apps::AppManifest, display::ScreenBufferHandle,
-    transport::SyncConnection,
+    apps::AppManifest,
+    display::ScreenBufferHandle,
+    streams::{api_server::ApiServerHandle, coproc_client::SyncConnection},
 };
 use std::{cell::RefCell, collections::BTreeMap, io, path::Path, rc::Rc, time::Duration};
 

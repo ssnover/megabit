@@ -1,4 +1,4 @@
-use crate::{api_server::ApiServerHandle, transport::Connection};
+use crate::streams::{api_server::ApiServerHandle, coproc_client::Connection};
 use async_channel::{Receiver, Sender, TryRecvError};
 use megabit_runner_msgs::ConsoleMessage;
 use megabit_serial_protocol::SerialMessage;

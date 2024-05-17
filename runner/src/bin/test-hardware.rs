@@ -1,5 +1,5 @@
 use clap::Parser;
-use megabit_runner::transport::{self, DeviceTransport};
+use megabit_runner::streams::coproc_client::{self, DeviceTransport};
 use megabit_serial_protocol::SerialMessage;
 use std::time::Duration;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -22,7 +22,7 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let (serial_conn, serial_task) = transport::start_transport_task(args.device);
+    let (serial_conn, serial_task) = coproc_client::start_transport_task(args.device);
     let _serial_task_handle = tokio::spawn(Box::into_pin(serial_task));
 
     let colors = [(0xff, 0x00, 0x00), (0x00, 0xff, 0x00), (0x00, 0x00, 0xff)];

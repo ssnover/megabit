@@ -1,10 +1,12 @@
 use clap::Parser;
 use megabit_runner::{
-    api_server,
     apps::Library,
     display::{DisplayConfiguration, PixelRepresentation, ScreenBuffer},
     events::EventListener,
-    transport::{self, DeviceTransport},
+    streams::{
+        api_server,
+        coproc_client::{self, DeviceTransport},
+    },
     Runner,
 };
 use std::path::PathBuf;
@@ -36,8 +38,9 @@ fn main() -> anyhow::Result<()> {
         .enable_all()
         .build()?;
 
-    let (serial_conn, serial_task) = transport::start_transport_task(args.device);
-    let sync_serial_conn = transport::SyncConnection::new(serial_conn.clone(), rt.handle().clone());
+    let (serial_conn, serial_task) = coproc_client::start_transport_task(args.device);
+    let sync_serial_conn =
+        coproc_client::SyncConnection::new(serial_conn.clone(), rt.handle().clone());
 
     let _serial_task_handle = rt.spawn(Box::into_pin(serial_task));
 

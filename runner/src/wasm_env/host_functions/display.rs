@@ -3,9 +3,8 @@ use megabit_utils::rgb555::Rgb555;
 
 use super::super::ScreenBufferHandle;
 use crate::{
-    api_server::ApiServerHandle,
     display::{DisplayConfiguration, MonocolorPalette},
-    transport::SyncConnection,
+    streams::{api_server::ApiServerHandle, coproc_client::SyncConnection},
 };
 
 pub fn write_region(
