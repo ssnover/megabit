@@ -1,9 +1,10 @@
 use self::host_functions::with_host_functions;
-use crate::{api_server::ApiServerHandle, display::ScreenBufferHandle, transport::SyncConnection};
-pub use app_manifest::AppManifest;
+use crate::{
+    api_server::ApiServerHandle, apps::AppManifest, display::ScreenBufferHandle,
+    transport::SyncConnection,
+};
 use std::{cell::RefCell, collections::BTreeMap, io, path::Path, rc::Rc, time::Duration};
 
-mod app_manifest;
 mod host_functions;
 
 pub type KvStore = BTreeMap<String, Vec<u8>>;
@@ -59,6 +60,7 @@ pub fn load_apps_from_path(data_dir: impl AsRef<Path>) -> io::Result<Vec<AppMani
 pub struct WasmAppRunner {
     plugin: extism::Plugin,
     name: String,
+    id: String,
     refresh_period: Option<Duration>,
 }
 
@@ -67,6 +69,7 @@ impl WasmAppRunner {
         wasm_bin_path: impl AsRef<Path>,
         refresh_period: Option<Duration>,
         app_name: impl Into<String>,
+        checksum: String,
         serial_conn: SyncConnection,
         screen_buffer: ScreenBufferHandle,
         api_server: ApiServerHandle,
@@ -81,6 +84,7 @@ impl WasmAppRunner {
 
         Ok(WasmAppRunner {
             plugin,
+            id: checksum,
             name: app_name.into(),
             refresh_period,
         })
@@ -97,6 +101,7 @@ impl WasmAppRunner {
             app_manifest.app_bin_path,
             app_manifest.refresh_period,
             app_manifest.app_name,
+            app_manifest.md5sum,
             serial_conn,
             screen_buffer,
             api_server,
@@ -109,6 +114,10 @@ impl WasmAppRunner {
 
     pub fn refresh_period(&self) -> Option<Duration> {
         self.refresh_period
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
     }
 
     pub fn setup_app(&mut self) -> anyhow::Result<()> {

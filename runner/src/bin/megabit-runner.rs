@@ -1,10 +1,10 @@
 use clap::Parser;
 use megabit_runner::{
     api_server,
+    apps::Library,
     display::{DisplayConfiguration, PixelRepresentation, ScreenBuffer},
     events::EventListener,
     transport::{self, DeviceTransport},
-    wasm_env::{self, AppManifest},
     Runner,
 };
 use std::path::PathBuf;
@@ -60,36 +60,14 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let wasm_apps = std::fs::read_dir(data_dir)?
-        .map(|entry| {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_dir() {
-                if let Ok(app) = wasm_env::AppManifest::open(&path) {
-                    tracing::info!("Found app {} at path: {}", &app.app_name, path.display());
-                    Ok(Some(app))
-                } else {
-                    tracing::warn!("Unable to build app from bundle at {}", path.display());
-                    Ok(None)
-                }
-            } else {
-                Ok(None)
-            }
-        })
-        .filter_map(|app: anyhow::Result<Option<AppManifest>>| match app {
-            Ok(app) => app,
-            Err(_) => None,
-        })
-        .collect::<Vec<_>>();
-    tracing::info!("Found {} Megabit apps", wasm_apps.len());
-
+    let library = Library::new(data_dir)?;
     let api_server_handle = api_server::start(8003, rt.handle().clone());
     let event_listener =
         EventListener::new(serial_conn, api_server_handle.clone(), rt.handle().clone());
     let screen_buffer = ScreenBuffer::create(display_info.width, display_info.height);
 
     let mut runner = Runner::new(
-        wasm_apps,
+        library,
         sync_serial_conn,
         screen_buffer,
         event_listener,

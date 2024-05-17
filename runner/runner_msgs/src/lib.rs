@@ -11,6 +11,8 @@ pub enum ConsoleMessage {
     NextApp,
     PreviousApp,
     SetMatrixRowRgb(SetMatrixRowRgb),
+    RequestAppListing(RequestAppListing),
+    AppListingResponse(AppListingResponse),
     #[cfg(test)]
     TestMessage(TestMessage),
 }
@@ -19,6 +21,23 @@ pub enum ConsoleMessage {
 pub struct SetMatrixRowRgb {
     pub row: usize,
     pub data: Vec<u16>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RequestAppListing {
+    pub request_id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct AppListingResponse {
+    pub request_id: String,
+    pub apps: Vec<App>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct App {
+    pub md5sum: String,
+    pub app_name: String,
 }
 
 #[cfg(test)]

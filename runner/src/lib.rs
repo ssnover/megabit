@@ -1,11 +1,13 @@
 use api_server::ApiServerHandle;
+use apps::AppManifest;
 use display::ScreenBufferHandle;
 use events::{Event, EventListener};
 use std::{io, time::Duration};
 use transport::SyncConnection;
-use wasm_env::{AppManifest, WasmAppRunner};
+use wasm_env::WasmAppRunner;
 
 pub mod api_server;
+pub mod apps;
 pub mod display;
 pub mod events;
 pub mod transport;
@@ -14,9 +16,9 @@ pub mod wasm_env;
 const DEFAULT_RUN_PERIOD: Duration = Duration::from_secs(1);
 
 pub struct Runner {
-    apps: Vec<AppManifest>,
+    app_library: apps::Library,
     is_running: bool,
-    current_runner: (usize, WasmAppRunner),
+    runner: WasmAppRunner,
     serial_conn: SyncConnection,
     screen_buffer: ScreenBufferHandle,
     event_listener: EventListener,
@@ -25,23 +27,23 @@ pub struct Runner {
 
 impl Runner {
     pub fn new(
-        apps: Vec<AppManifest>,
+        app_library: apps::Library,
         serial_conn: SyncConnection,
         screen_buffer: ScreenBufferHandle,
         event_listener: EventListener,
         api_server: ApiServerHandle,
     ) -> io::Result<Self> {
-        if !apps.is_empty() {
+        if let Some(app) = app_library.get_first() {
             let initial_app = Self::load_app(
-                &apps[0],
+                &app,
                 serial_conn.clone(),
                 screen_buffer.clone(),
                 api_server.clone(),
             )?;
             Ok(Self {
-                apps,
+                app_library,
                 is_running: true,
-                current_runner: (0, initial_app),
+                runner: initial_app,
                 serial_conn,
                 screen_buffer,
                 event_listener,
@@ -53,32 +55,28 @@ impl Runner {
     }
 
     fn load_next_app(&mut self) -> io::Result<()> {
-        let next_idx = (self.current_runner.0 + 1) % self.apps.len();
-        let app = Self::load_app(
-            &self.apps[next_idx],
-            self.serial_conn.clone(),
-            self.screen_buffer.clone(),
-            self.api_server.clone(),
-        )?;
-        self.current_runner = (next_idx, app);
-        self.is_running = true;
+        if let Some(app) = self.app_library.get_next(self.runner.id()) {
+            self.runner = Self::load_app(
+                &app,
+                self.serial_conn.clone(),
+                self.screen_buffer.clone(),
+                self.api_server.clone(),
+            )?;
+            self.is_running = true;
+        }
         Ok(())
     }
 
     fn load_previous_app(&mut self) -> io::Result<()> {
-        let prev_idx = if self.current_runner.0 == 0 {
-            self.apps.len() - 1
-        } else {
-            self.current_runner.0 - 1
-        };
-        let app = Self::load_app(
-            &self.apps[prev_idx],
-            self.serial_conn.clone(),
-            self.screen_buffer.clone(),
-            self.api_server.clone(),
-        )?;
-        self.current_runner = (prev_idx, app);
-        self.is_running = true;
+        if let Some(app) = self.app_library.get_prev(self.runner.id()) {
+            self.runner = Self::load_app(
+                &app,
+                self.serial_conn.clone(),
+                self.screen_buffer.clone(),
+                self.api_server.clone(),
+            )?;
+            self.is_running = true;
+        }
         Ok(())
     }
 
@@ -116,10 +114,10 @@ impl Runner {
             while let Some(event) = self.event_listener.next() {
                 match event {
                     Event::NextAppRequest => {
-                        let current_app = self.current_runner.0;
+                        let current_app = self.runner.id().to_string();
 
                         while let Err(err) = self.load_next_app() {
-                            if current_app == self.current_runner.0 {
+                            if &current_app == self.runner.id() {
                                 // We've fully cycled around...
                                 tracing::error!("Cannot load any apps, exiting");
                                 std::process::exit(1);
@@ -128,10 +126,10 @@ impl Runner {
                         }
                     }
                     Event::PreviousAppRequest => {
-                        let current_app = self.current_runner.0;
+                        let current_app = self.runner.id().to_string();
 
                         while let Err(err) = self.load_previous_app() {
-                            if current_app == self.current_runner.0 {
+                            if &current_app == self.runner.id() {
                                 // We've fully cycled around...
                                 tracing::error!("Cannot load any apps, exiting");
                                 std::process::exit(1);
@@ -163,25 +161,16 @@ impl Runner {
     }
 
     fn run_app(&mut self, resume: bool) {
-        let current_app = &self.apps[self.current_runner.0];
         if !resume {
-            tracing::info!(
-                "Starting app {} [{}]",
-                current_app.app_name,
-                current_app.md5sum
-            );
-            self.current_runner.1.setup_app().unwrap();
+            tracing::info!("Starting app {} [{}]", self.runner.name(), self.runner.id());
+            self.runner.setup_app().unwrap();
         }
 
-        let refresh_period = current_app.refresh_period.unwrap_or(DEFAULT_RUN_PERIOD);
+        let refresh_period = self.runner.refresh_period().unwrap_or(DEFAULT_RUN_PERIOD);
         loop {
             let start_time = std::time::Instant::now();
-            tracing::debug!(
-                "Running app {} [{}]",
-                current_app.app_name,
-                current_app.md5sum
-            );
-            if let Err(err) = self.current_runner.1.run_app_once() {
+            tracing::debug!("Running app {} [{}]", self.runner.name(), self.runner.id());
+            if let Err(err) = self.runner.run_app_once() {
                 tracing::error!("Running Wasm app failed: {err}, exiting");
                 break;
             }

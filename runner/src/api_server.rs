@@ -1,10 +1,6 @@
 use async_channel::{Receiver, Sender, TryRecvError};
 use megabit_runner_msgs::ConsoleMessage;
-use std::{
-    io::{self},
-    net::SocketAddr,
-    sync::Arc,
-};
+use std::{io, net::SocketAddr, sync::Arc};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{

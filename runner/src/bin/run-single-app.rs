@@ -73,6 +73,7 @@ fn main() -> anyhow::Result<()> {
             &args.app,
             args.refresh.map(Duration::from_millis),
             "Demo",
+            "".into(),
             serial_conn.clone(),
             screen_buffer.clone(),
             api_server_handle.clone(),
