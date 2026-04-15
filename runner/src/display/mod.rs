@@ -189,7 +189,8 @@ impl ScreenBuffer {
                 .into_iter()
                 .copied()
                 .collect();
-            Ok((row_data, self.dirty_row_buffer[row]))
+            //Ok((row_data, self.dirty_row_buffer[row]))
+            Ok((row_data, true))
         } else {
             Err(io::ErrorKind::InvalidInput.into())
         }

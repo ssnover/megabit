@@ -99,7 +99,6 @@ impl<R: UsbResponder + 'static, DBG: StatefulOutputPin, M: RawMutex + 'static>
                 self.responder.send(&response_buf).await.unwrap();
             }
             DisplayCommand::RowUpdateRgb(RowUpdateRgb { row }) => {
-                self.debug_pin.toggle().unwrap();
                 {
                     let row_buf = self.row_data_buffer.lock().await;
                     self.driver.update_row_rgb(*row, &row_buf[..]).await;
@@ -110,7 +109,6 @@ impl<R: UsbResponder + 'static, DBG: StatefulOutputPin, M: RawMutex + 'static>
                     0x00,
                 ];
                 self.responder.send(&response_buf).await.unwrap();
-                self.debug_pin.toggle().unwrap();
             }
             DisplayCommand::GetDisplayInfo => {
                 let mut response_buf = [0u8; 11];
@@ -128,6 +126,8 @@ impl<R: UsbResponder + 'static, DBG: StatefulOutputPin, M: RawMutex + 'static>
                 self.responder.send(&response_buf).await.unwrap();
             }
             DisplayCommand::CommitRender => {
+                self.debug_pin.toggle().unwrap();
+                self.driver.flip();
                 let response_buf = [
                     commit_render_response::MAJOR,
                     commit_render_response::MINOR,

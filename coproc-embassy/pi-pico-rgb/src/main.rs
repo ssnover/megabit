@@ -1,7 +1,6 @@
 #![no_std]
 #![no_main]
 
-use core::cell::RefCell;
 use defmt::unwrap;
 use defmt_rtt as _;
 use embassy_executor::Executor;
@@ -25,7 +24,8 @@ use embassy_sync::{
 use megabit_coproc_common::{
     cobs_buffer::CobsBuffer,
     display::{
-        rgb_matrix::DisplayCommandHandler, WaveshareDriver, COLUMNS, DISPLAY_CMD_QUEUE_SIZE, ROWS,
+        rgb_matrix::DisplayCommandHandler, PixelBuffer, WaveshareDriver, COLUMNS,
+        DISPLAY_CMD_QUEUE_SIZE, ROWS,
     },
     msg_router::{
         display_cmd_router::{DisplayCmdRouter, DisplayCommand},
@@ -59,9 +59,8 @@ static DISPLAY_CMD_CHANNEL: StaticCell<
 > = StaticCell::new();
 static SYSTEM_CMD_CHANNEL: StaticCell<Channel<NoopRawMutex, SystemCommand, SYSTEM_CMD_QUEUE_SIZE>> =
     StaticCell::new();
-static PIXEL_BUFFER_HANDLE: StaticCell<
-    Mutex<CriticalSectionRawMutex, RefCell<[u16; ROWS * COLUMNS]>>,
-> = StaticCell::new();
+static PIXEL_BUFFER_HANDLE: StaticCell<PixelBuffer<CriticalSectionRawMutex, { ROWS * COLUMNS }>> =
+    StaticCell::new();
 
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => InterruptHandler<USB>;
@@ -97,8 +96,12 @@ fn main() -> ! {
         system_cmd_router,
     );
 
-    let pixel_buffer =
-        PIXEL_BUFFER_HANDLE.init_with(|| Mutex::new(RefCell::new([0u16; ROWS * COLUMNS])));
+    let pixel_buffer = PIXEL_BUFFER_HANDLE.init_with(|| {
+        PixelBuffer::new(
+            Mutex::new([0u16; ROWS * COLUMNS]),
+            Mutex::new([0u16; ROWS * COLUMNS]),
+        )
+    });
 
     let r1 = Output::new(peripherals.PIN_0, Level::Low);
     let g1 = Output::new(peripherals.PIN_1, Level::Low);

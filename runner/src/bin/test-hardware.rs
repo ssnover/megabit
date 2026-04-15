@@ -27,20 +27,15 @@ async fn main() -> anyhow::Result<()> {
 
     let colors = [(0xff, 0x00, 0x00), (0x00, 0xff, 0x00), (0x00, 0x00, 0xff)];
 
-    serial_conn
-        .wait_for_message(
-            Box::new(|msg| matches!(msg, &SerialMessage::ReportButtonPress)),
-            None,
-        )
-        .await;
-
     let display_info = serial_conn.get_display_info().await.unwrap();
 
     for row in 0..display_info.height as u8 {
         for col in 0..display_info.width as u8 {
             serial_conn.set_single_cell(row, col, true).await?;
+            serial_conn.commit_render().await?;
             tokio::time::sleep(Duration::from_millis(100)).await;
             serial_conn.set_single_cell(row, col, false).await?;
+            serial_conn.commit_render().await?;
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
     }

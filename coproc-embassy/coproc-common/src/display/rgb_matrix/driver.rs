@@ -3,15 +3,13 @@
 // * https://github.com/david-sawatzke/hub75-rs/blob/30f2aa62279669f9cf97149f450b2b0f7bdbab8b/src/lib.rs#L261
 // * https://learn.adafruit.com/adafruit-protomatter-rgb-matrix-library/arduino-library
 
-use super::{COLUMNS, ROWS};
-use core::{cell::RefCell, convert::Infallible};
-use embassy_sync::blocking_mutex::raw::RawMutex;
-use embassy_sync::mutex::Mutex;
-use embassy_time::Timer;
-use embedded_hal::digital::OutputPin;
-use unroll::unroll_for_loops;
+use crate::display::PixelBuffer;
 
-pub trait Hub75Display {}
+use super::{COLUMNS, ROWS};
+use core::convert::Infallible;
+use embassy_sync::blocking_mutex::raw::RawMutex;
+use embassy_time::Timer;
+use embedded_hal::digital::{OutputPin, StatefulOutputPin};
 
 pub trait DriverPins {
     // Color data pins
@@ -131,15 +129,13 @@ impl<
     }
 }
 
-type PixelBuffer = [u16; ROWS * COLUMNS];
-
 pub struct WaveshareDriver<PINS: DriverPins, M: RawMutex + 'static> {
     pins: PINS,
-    pixel_data: &'static Mutex<M, RefCell<PixelBuffer>>,
+    pixel_data: &'static PixelBuffer<M, { ROWS * COLUMNS }>,
 }
 
 impl<PINS: DriverPins, M: RawMutex + 'static> WaveshareDriver<PINS, M> {
-    pub fn new(pins: PINS, pixel_data: &'static Mutex<M, RefCell<PixelBuffer>>) -> Self {
+    pub fn new(pins: PINS, pixel_data: &'static PixelBuffer<M, { ROWS * COLUMNS }>) -> Self {
         Self { pins, pixel_data }
     }
 
@@ -147,21 +143,19 @@ impl<PINS: DriverPins, M: RawMutex + 'static> WaveshareDriver<PINS, M> {
         DriverHandle::new(self.pixel_data)
     }
 
-    pub async fn run(&mut self, mut timing_pin: impl OutputPin) {
+    pub async fn run(&mut self, mut timing_pin: impl StatefulOutputPin) {
         loop {
             Timer::after_millis(5).await;
             self.render(&mut timing_pin).await;
         }
     }
 
-    #[unroll_for_loops]
-    pub async fn render(&mut self, debug_pin: &mut impl OutputPin) {
-        let pixel_data = self.pixel_data.lock().await;
-        let pixel_data = pixel_data.borrow();
+    pub async fn render(&mut self, debug_pin: &mut impl StatefulOutputPin) {
+        let pixel_data = self.pixel_data.read_buffer().lock().await;
+        debug_pin.toggle().unwrap();
         for pwm_step in 0..(1u8 << 4) {
             let pwm_step = pwm_step << 1;
             for row in 0..(ROWS / 2) {
-                debug_pin.set_low().unwrap();
                 for idx in ((row * COLUMNS)..((row + 1) * COLUMNS))
                     .into_iter()
                     .step_by(16)
@@ -183,7 +177,6 @@ impl<PINS: DriverPins, M: RawMutex + 'static> WaveshareDriver<PINS, M> {
                         self.pins.clk().set_low().unwrap();
                     }
                 }
-                debug_pin.set_high().unwrap();
 
                 self.pins.oe().set_high().unwrap();
                 cortex_m::asm::delay(50);
@@ -191,30 +184,32 @@ impl<PINS: DriverPins, M: RawMutex + 'static> WaveshareDriver<PINS, M> {
                 cortex_m::asm::delay(50);
                 self.pins.lat().set_high().unwrap();
 
-                // set the address
-                let addr = row as u8;
-                self.pins
-                    .a()
-                    .set_state(((addr & (1 << 0)) != 0).into())
-                    .unwrap();
-                self.pins
-                    .b()
-                    .set_state(((addr & (1 << 1)) != 0).into())
-                    .unwrap();
-                self.pins
-                    .c()
-                    .set_state(((addr & (1 << 2)) != 0).into())
-                    .unwrap();
-                self.pins
-                    .d()
-                    .set_state(((addr & (1 << 3)) != 0).into())
-                    .unwrap();
+                self.set_addr(row as u8);
                 cortex_m::asm::delay(50);
                 self.pins.oe().set_low().unwrap();
             }
         }
 
         self.pins.oe().set_high().unwrap();
+    }
+
+    fn set_addr(&mut self, addr: u8) {
+        self.pins
+            .a()
+            .set_state(((addr & (1 << 0)) != 0).into())
+            .unwrap();
+        self.pins
+            .b()
+            .set_state(((addr & (1 << 1)) != 0).into())
+            .unwrap();
+        self.pins
+            .c()
+            .set_state(((addr & (1 << 2)) != 0).into())
+            .unwrap();
+        self.pins
+            .d()
+            .set_state(((addr & (1 << 3)) != 0).into())
+            .unwrap();
     }
 }
 
@@ -227,25 +222,23 @@ fn channels(pixel_color: u16) -> (u8, u8, u8) {
 }
 
 pub struct DriverHandle<M: RawMutex + 'static> {
-    pixel_data: &'static Mutex<M, RefCell<PixelBuffer>>,
+    pixel_data: &'static PixelBuffer<M, { ROWS * COLUMNS }>,
 }
 
 impl<M: RawMutex + 'static> DriverHandle<M> {
-    pub fn new(pixel_data: &'static Mutex<M, RefCell<PixelBuffer>>) -> Self {
+    pub fn new(pixel_data: &'static PixelBuffer<M, { ROWS * COLUMNS }>) -> Self {
         Self { pixel_data }
     }
 
     pub async fn set_cell(&mut self, row: u8, col: u8, value: u16) {
         let idx = col as usize + (row as usize * COLUMNS);
-        let pixel_data = self.pixel_data.lock().await;
-        let mut pixel_data = pixel_data.borrow_mut();
+        let mut pixel_data = self.pixel_data.write_buffer().lock().await;
         pixel_data[idx] = value;
     }
 
     pub async fn update_row(&mut self, row: u8, on_value: u16, values: &[u8]) {
         let start_idx = COLUMNS * row as usize;
-        let pixel_data = self.pixel_data.lock().await;
-        let mut pixel_data = pixel_data.borrow_mut();
+        let mut pixel_data = self.pixel_data.write_buffer().lock().await;
         (0..(8 * values.len()))
             .into_iter()
             .zip(pixel_data[start_idx..(start_idx + COLUMNS)].iter_mut())
@@ -262,11 +255,14 @@ impl<M: RawMutex + 'static> DriverHandle<M> {
 
     pub async fn update_row_rgb(&mut self, row: u8, values: &[u16]) {
         let start_idx = COLUMNS * row as usize;
-        let pixel_data = self.pixel_data.lock().await;
-        let mut pixel_data = pixel_data.borrow_mut();
+        let mut pixel_data = self.pixel_data.write_buffer().lock().await;
         pixel_data[start_idx..]
             .iter_mut()
-            .zip(values.iter())
+            .zip(values[..core::cmp::min(COLUMNS, values.len())].iter())
             .for_each(|(dst, src)| *dst = *src)
+    }
+
+    pub fn flip(&self) {
+        self.pixel_data.flip();
     }
 }

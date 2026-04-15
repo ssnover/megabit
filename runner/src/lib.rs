@@ -6,6 +6,7 @@ use streams::{api_server::ApiServerHandle, coproc_client::SyncConnection};
 use wasm_env::WasmAppRunner;
 
 pub mod apps;
+pub mod cmd_queue;
 pub mod display;
 pub mod events;
 pub mod streams;
