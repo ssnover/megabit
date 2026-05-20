@@ -1,3 +1,5 @@
+use core::future::Future;
+
 use crate::display::{DisplayCmdSender, COLUMNS};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 
@@ -48,7 +50,7 @@ impl DisplayCmdRouter {
         }
     }
 
-    pub async fn handle_update_single_cell(&self, payload: &[u8]) {
+    pub fn handle_update_single_cell(&self, payload: &[u8]) -> impl Future<Output = ()> + '_ {
         let row = payload[0];
         let col = payload[1];
         let value = payload[2] != 0;
@@ -58,10 +60,9 @@ impl DisplayCmdRouter {
                 col,
                 value,
             }))
-            .await;
     }
 
-    pub async fn handle_row_update(&self, payload: &[u8]) {
+    pub fn handle_row_update(&self, payload: &[u8]) -> impl Future<Output = ()> + '_ {
         let row = payload[0];
         let _row_data_len = payload[1];
         let mut row_data = [0u8; COLUMNS / 8];
@@ -73,13 +74,10 @@ impl DisplayCmdRouter {
             });
         self.request_sender
             .send(DisplayCommand::RowUpdate(RowUpdate { row, row_data }))
-            .await;
     }
 
-    pub async fn handle_get_display_info(&self) {
-        self.request_sender
-            .send(DisplayCommand::GetDisplayInfo)
-            .await;
+    pub fn handle_get_display_info(&self) -> impl Future<Output = ()> + '_ {
+        self.request_sender.send(DisplayCommand::GetDisplayInfo)
     }
 
     pub async fn handle_row_update_rgb(&self, payload: &[u8]) {
@@ -100,16 +98,15 @@ impl DisplayCmdRouter {
         }
     }
 
-    pub async fn handle_request_commit_render(&self) {
-        self.request_sender.send(DisplayCommand::CommitRender).await;
+    pub fn handle_request_commit_render(&self) -> impl Future<Output = ()> + '_ {
+        self.request_sender.send(DisplayCommand::CommitRender)
     }
 
-    pub async fn handle_set_monocolor_palette(&self, payload: &[u8]) {
+    pub fn handle_set_monocolor_palette(&self, payload: &[u8]) -> impl Future<Output = ()> + '_ {
         let color = u16::from_be_bytes([payload[0], payload[1]]);
         self.request_sender
             .send(DisplayCommand::SetMonocolorPalette(SetMonocolorPalette {
                 color,
             }))
-            .await;
     }
 }

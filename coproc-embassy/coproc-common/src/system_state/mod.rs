@@ -128,35 +128,31 @@ impl<R: UsbResponder + 'static, RGB: RgbLed, DEBUG: StatefulOutputPin, BTN: Butt
         debug_led_override_state: &AtomicBool,
     ) {
         loop {
-            match cmd_rx.receive().await {
+            let response = match cmd_rx.receive().await {
                 SystemCommand::SetRgbState(SetRgbState { r, g, b }) => {
                     rgb_led.set_state(r, g, b);
-                    responder
-                        .send(&[
-                            cmds::set_rgb_state_response::MAJOR,
-                            cmds::set_rgb_state_response::MINOR,
-                            0x00,
-                        ])
-                        .await
-                        .map_err(|_| {
-                            error_state.store(true, Ordering::Relaxed);
-                        })
-                        .unwrap();
+                    &[
+                        cmds::set_rgb_state_response::MAJOR,
+                        cmds::set_rgb_state_response::MINOR,
+                        0x00,
+                    ]
                 }
                 SystemCommand::SetDebugLedState(SetDebugLedState { state }) => {
                     debug_led_override_state.store(state, Ordering::Relaxed);
                     debug_led_overridden.store(true, Ordering::Relaxed);
-                    responder
-                        .send(&[
-                            cmds::set_led_state_response::MAJOR,
-                            cmds::set_led_state_response::MINOR,
-                            0x00,
-                        ])
-                        .await
-                        .map_err(|_| error_state.store(true, Ordering::Relaxed))
-                        .unwrap();
+                    &[
+                        cmds::set_led_state_response::MAJOR,
+                        cmds::set_led_state_response::MINOR,
+                        0x00,
+                    ]
                 }
-            }
+            };
+
+            responder
+                .send(response)
+                .await
+                .map_err(|_| error_state.store(true, Ordering::Relaxed))
+                .unwrap();
         }
     }
 }

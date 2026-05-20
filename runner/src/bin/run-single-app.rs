@@ -30,7 +30,7 @@ fn main() -> anyhow::Result<()> {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "run_single_app=debug,megabit_runner=info".into()),
+                .unwrap_or_else(|_| "info,run_single_app=debug,megabit_runner=info".into()),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
@@ -58,19 +58,17 @@ fn main() -> anyhow::Result<()> {
     let screen_buffer = ScreenBuffer::create(display_info.width, display_info.height);
 
     let mut inotify = Inotify::init().unwrap();
-    inotify
-        .watches()
-        .add(
-            &args.app,
-            WatchMask::MODIFY
-                | WatchMask::CREATE
-                | WatchMask::DELETE
-                | WatchMask::ACCESS
-                | WatchMask::ATTRIB,
-        )
-        .unwrap();
+    let watch_mask = WatchMask::MODIFY
+        | WatchMask::CREATE
+        | WatchMask::DELETE
+        | WatchMask::ACCESS
+        | WatchMask::ATTRIB;
+    inotify.watches().add(&args.app, watch_mask).unwrap();
 
     loop {
+        // If the file was updated, the watch is removed since the inode is replaced
+        inotify.watches().add(&args.app, watch_mask).unwrap();
+
         let mut wasm_app = wasm_env::WasmAppRunner::new(
             &args.app,
             args.refresh.map(Duration::from_millis),

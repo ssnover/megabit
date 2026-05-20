@@ -1,3 +1,5 @@
+use core::future::Future;
+
 use crate::cobs_buffer::CobsBuffer;
 use crate::usb::{Disconnected, UsbResponder};
 use embassy_usb::class::cdc_acm::Receiver as UsbReceiver;
@@ -53,8 +55,8 @@ impl<
         }
     }
 
-    async fn wait_for_connection(&mut self) {
-        self.class.wait_connection().await
+    fn wait_for_connection(&mut self) -> impl Future<Output = ()> + '_ {
+        self.class.wait_connection()
     }
 
     async fn handle_incoming(&mut self) -> Result<(), Disconnected> {
