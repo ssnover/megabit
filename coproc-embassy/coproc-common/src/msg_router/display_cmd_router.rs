@@ -1,6 +1,6 @@
 use core::future::Future;
 
-use crate::display::{DisplayCmdSender, COLUMNS};
+use crate::display::{COLUMNS, DisplayCmdSender};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 
 pub enum DisplayCommand {

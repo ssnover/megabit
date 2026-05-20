@@ -25,10 +25,10 @@ pub struct MessageRouter<
 }
 
 impl<
-        D: embassy_usb_driver::Driver<'static> + 'static,
-        R: UsbResponder + 'static,
-        const DECODE_BUFFER_SIZE: usize,
-    > MessageRouter<D, R, DECODE_BUFFER_SIZE>
+    D: embassy_usb_driver::Driver<'static> + 'static,
+    R: UsbResponder + 'static,
+    const DECODE_BUFFER_SIZE: usize,
+> MessageRouter<D, R, DECODE_BUFFER_SIZE>
 {
     pub fn new(
         class: UsbReceiver<'static, D>,

@@ -5,16 +5,15 @@ use defmt::unwrap;
 use defmt_rtt as _;
 use embassy_executor::Executor;
 use embassy_rp::{
-    bind_interrupts,
+    Peripheral, bind_interrupts,
     gpio::{Input, Level, Output, Pin, Pull},
-    multicore::{spawn_core1, Stack},
+    multicore::{Stack, spawn_core1},
     peripherals::{
-        self, PIN_0, PIN_1, PIN_10, PIN_11, PIN_12, PIN_17, PIN_19, PIN_2, PIN_21, PIN_25, PIN_3,
-        PIN_4, PIN_5, PIN_6, PIN_7, PIN_8, PIN_9, PWM_CH0, PWM_CH1, PWM_CH2, USB,
+        self, PIN_0, PIN_1, PIN_2, PIN_3, PIN_4, PIN_5, PIN_6, PIN_7, PIN_8, PIN_9, PIN_10, PIN_11,
+        PIN_12, PIN_17, PIN_19, PIN_21, PIN_25, PWM_CH0, PWM_CH1, PWM_CH2, USB,
     },
     pwm::{self, Pwm},
     usb::{self, InterruptHandler},
-    Peripheral,
 };
 use embassy_sync::{
     blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex},
@@ -24,16 +23,16 @@ use embassy_sync::{
 use megabit_coproc_common::{
     cobs_buffer::CobsBuffer,
     display::{
-        rgb_matrix::DisplayCommandHandler, PixelBuffer, WaveshareDriver, COLUMNS,
-        DISPLAY_CMD_QUEUE_SIZE, ROWS,
+        COLUMNS, DISPLAY_CMD_QUEUE_SIZE, PixelBuffer, ROWS, WaveshareDriver,
+        rgb_matrix::DisplayCommandHandler,
     },
     msg_router::{
+        MessageRouter,
         display_cmd_router::{DisplayCmdRouter, DisplayCommand},
         system_cmd_router::{SystemCmdRouter, SystemCommand},
-        MessageRouter,
     },
-    system_state::{Button, RgbLed, SystemStateManager, SYSTEM_CMD_QUEUE_SIZE},
-    usb::{init_usb_device, split, Responder},
+    system_state::{Button, RgbLed, SYSTEM_CMD_QUEUE_SIZE, SystemStateManager},
+    usb::{Responder, init_usb_device, split},
 };
 use panic_probe as _;
 use static_cell::StaticCell;

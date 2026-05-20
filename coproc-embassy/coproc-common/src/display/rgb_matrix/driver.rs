@@ -47,20 +47,20 @@ pub trait DriverPins {
 }
 
 impl<
-        R1: OutputPin<Error = Infallible>,
-        G1: OutputPin<Error = Infallible>,
-        B1: OutputPin<Error = Infallible>,
-        R2: OutputPin<Error = Infallible>,
-        G2: OutputPin<Error = Infallible>,
-        B2: OutputPin<Error = Infallible>,
-        A: OutputPin<Error = Infallible>,
-        B: OutputPin<Error = Infallible>,
-        C: OutputPin<Error = Infallible>,
-        D: OutputPin<Error = Infallible>,
-        CLK: OutputPin<Error = Infallible>,
-        LAT: OutputPin<Error = Infallible>,
-        OE: OutputPin<Error = Infallible>,
-    > DriverPins for (R1, G1, B1, R2, G2, B2, A, B, C, D, CLK, LAT, OE)
+    R1: OutputPin<Error = Infallible>,
+    G1: OutputPin<Error = Infallible>,
+    B1: OutputPin<Error = Infallible>,
+    R2: OutputPin<Error = Infallible>,
+    G2: OutputPin<Error = Infallible>,
+    B2: OutputPin<Error = Infallible>,
+    A: OutputPin<Error = Infallible>,
+    B: OutputPin<Error = Infallible>,
+    C: OutputPin<Error = Infallible>,
+    D: OutputPin<Error = Infallible>,
+    CLK: OutputPin<Error = Infallible>,
+    LAT: OutputPin<Error = Infallible>,
+    OE: OutputPin<Error = Infallible>,
+> DriverPins for (R1, G1, B1, R2, G2, B2, A, B, C, D, CLK, LAT, OE)
 {
     type R1 = R1;
     type G1 = G1;

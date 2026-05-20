@@ -16,11 +16,11 @@ pub struct DotMatrix<SPIBUS: SpiBus, OUT1: OutputPin, OUT2: OutputPin> {
 }
 
 impl<
-        SPIERR: Error,
-        SPIBUS: SpiBus<Error = SPIERR>,
-        OUT1: OutputPin<Error = Infallible>,
-        OUT2: OutputPin<Error = Infallible>,
-    > DotMatrix<SPIBUS, OUT1, OUT2>
+    SPIERR: Error,
+    SPIBUS: SpiBus<Error = SPIERR>,
+    OUT1: OutputPin<Error = Infallible>,
+    OUT2: OutputPin<Error = Infallible>,
+> DotMatrix<SPIBUS, OUT1, OUT2>
 {
     pub async fn new(spi_driver: SPIBUS, ncs_0: OUT1, ncs_1: OUT2) -> Result<Self, SPIERR> {
         let mut matrix = DotMatrix {
@@ -138,11 +138,11 @@ impl<
 }
 
 impl<
-        SPIERR: Error,
-        SPIBUS: SpiBus<Error = SPIERR>,
-        OUT1: OutputPin<Error = Infallible>,
-        OUT2: OutputPin<Error = Infallible>,
-    > DotMatrixDriver<COLUMN_DATA_SIZE> for DotMatrix<SPIBUS, OUT1, OUT2>
+    SPIERR: Error,
+    SPIBUS: SpiBus<Error = SPIERR>,
+    OUT1: OutputPin<Error = Infallible>,
+    OUT2: OutputPin<Error = Infallible>,
+> DotMatrixDriver<COLUMN_DATA_SIZE> for DotMatrix<SPIBUS, OUT1, OUT2>
 {
     type Error = SPIERR;
 

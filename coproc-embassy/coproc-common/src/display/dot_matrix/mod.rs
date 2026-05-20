@@ -9,7 +9,7 @@ use crate::{
 use core::future::Future;
 
 mod driver;
-pub use driver::{DotMatrix, COLUMNS, COLUMN_DATA_SIZE, ROWS};
+pub use driver::{COLUMN_DATA_SIZE, COLUMNS, DotMatrix, ROWS};
 
 pub const DISPLAY_CMD_QUEUE_SIZE: usize = 8;
 
