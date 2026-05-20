@@ -27,3 +27,6 @@ megabit-coproc-common = { workspace = true, features = ["defmt"] }
 panic-probe = { version = "0.3", features = ["print-defmt"] }
 portable-atomic = { version = "1.5", features = ["critical-section"] }
 static_cell.workspace = true
+
+[lints]
+clippy.type_complexity = "allow"

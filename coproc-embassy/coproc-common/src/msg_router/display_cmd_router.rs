@@ -86,7 +86,7 @@ impl DisplayCmdRouter {
             let mut row_buf = self.row_data_buffer.lock().await;
             row_buf
                 .iter_mut()
-                .zip((2..payload.len()).into_iter().step_by(2))
+                .zip((2..payload.len()).step_by(2))
                 .for_each(|(dst, src_idx)| {
                     *dst = u16::from_be_bytes([payload[src_idx], payload[src_idx + 1]])
                 });

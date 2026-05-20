@@ -116,11 +116,11 @@ impl<R: UsbResponder + 'static, DBG: StatefulOutputPin, M: RawMutex + 'static>
                 response_buf[1] = get_display_info_response::MINOR;
                 response_buf[2..6]
                     .iter_mut()
-                    .zip(((COLUMNS) as u32).to_be_bytes().into_iter())
+                    .zip(((COLUMNS) as u32).to_be_bytes())
                     .for_each(|(dst, src)| *dst = src);
                 response_buf[6..10]
                     .iter_mut()
-                    .zip(((ROWS) as u32).to_be_bytes().into_iter())
+                    .zip(((ROWS) as u32).to_be_bytes())
                     .for_each(|(dst, src)| *dst = src);
                 response_buf[10] = 0x01; // true
                 self.responder.send(&response_buf).await.unwrap();

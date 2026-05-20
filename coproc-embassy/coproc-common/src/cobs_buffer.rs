@@ -120,21 +120,21 @@ impl<'a, const N: usize> CobsBuffer<'a, N> {
         };
         let mut bytes_written = 0;
         if (N - self.write) > buf.len() {
-            for write_idx in 0..buf.len() {
-                self.data[self.write] = buf[write_idx];
+            for byte in buf {
+                self.data[self.write] = *byte;
                 self.write += 1;
                 bytes_written += 1;
             }
         } else {
-            for write_idx in 0..(N - self.write) {
-                self.data[self.write] = buf[write_idx];
+            for byte in buf.iter().take(N - self.write) {
+                self.data[self.write] = *byte;
                 self.write += 1;
                 bytes_written += 1;
             }
             assert_eq!(self.write, N);
             self.write = 0;
-            for write_idx in bytes_written..buf.len() {
-                self.data[self.write] = buf[write_idx];
+            for byte in buf.iter().skip(bytes_written) {
+                self.data[self.write] = *byte;
                 self.write += 1;
                 bytes_written += 1;
             }

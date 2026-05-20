@@ -32,3 +32,6 @@ defmt = [
     "embassy-time/defmt-timestamp-uptime",
     "embassy-usb/defmt",
 ]
+
+[lints]
+clippy.manual_async_fn = "allow"

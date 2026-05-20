@@ -157,7 +157,6 @@ impl<PINS: DriverPins, M: RawMutex + 'static> WaveshareDriver<PINS, M> {
             let pwm_step = pwm_step << 1;
             for row in 0..(ROWS / 2) {
                 for idx in ((row * COLUMNS)..((row + 1) * COLUMNS))
-                    .into_iter()
                     .step_by(16)
                 {
                     for idx_add in 0..16 {
@@ -240,7 +239,6 @@ impl<M: RawMutex + 'static> DriverHandle<M> {
         let start_idx = COLUMNS * row as usize;
         let mut pixel_data = self.pixel_data.write_buffer().lock().await;
         (0..(8 * values.len()))
-            .into_iter()
             .zip(pixel_data[start_idx..(start_idx + COLUMNS)].iter_mut())
             .for_each(|(idx, dst)| {
                 let byte_idx = idx / 8;
