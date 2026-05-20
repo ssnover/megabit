@@ -1,7 +1,21 @@
 [workspace]
 resolver = "2"
-members = ["console/backend", "runner", "runner/runner_msgs", "serial-protocol", "simulator/backend", "simulator/sim_msgs", "utils"]
-exclude = ["app-sdk", "coproc-embassy", "example-apps", "simulator/frontend", "console/frontend"]
+members = [
+    "console/backend",
+    "runner",
+    "runner/runner_msgs",
+    "serial-protocol",
+    "simulator/backend",
+    "simulator/sim_msgs",
+    "utils",
+]
+exclude = [
+    "app-sdk",
+    "coproc-embassy/*",
+    "example-apps",
+    "simulator/frontend",
+    "console/frontend",
+]
 
 [workspace.dependencies]
 # Internal
