@@ -16,7 +16,7 @@ jobs:
     name: Check formatting
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
@@ -34,10 +34,10 @@ jobs:
     needs: [format]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: "wasm32-unknown-unknown,wasm32-wasi"
+          targets: "wasm32-unknown-unknown,wasm32-wasip1"
       - name: Build Game of Life
         run: cargo build --release --manifest-path example-apps/game-of-life/Cargo.toml
       - name: Build Hello World
