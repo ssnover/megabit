@@ -19,8 +19,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - name: Format Nano
-        run: cargo fmt --all --check --manifest-path coproc-embassy/nano-ble-rgb/Cargo.toml
       - name: Format Pico
         run: cargo fmt --all --check --manifest-path coproc-embassy/pi-pico-rgb/Cargo.toml
   
@@ -32,8 +30,6 @@ jobs:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: "thumbv7em-none-eabi,thumbv6m-none-eabi"
-      - name: Build Arduino Nano 33 BLE firmware
-        run: cargo build --release --manifest-path coproc-embassy/nano-ble-rgb/Cargo.toml --target thumbv7em-none-eabi
+          targets: "thumbv6m-none-eabi"
       - name: Build Pi Pico firmware
         run: cargo build --release --manifest-path coproc-embassy/pi-pico-rgb/Cargo.toml --target thumbv6m-none-eabi
