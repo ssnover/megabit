@@ -32,4 +32,4 @@ jobs:
         with:
           targets: "thumbv6m-none-eabi"
       - name: Build Pi Pico firmware
-        run: cargo build --release --manifest-path coproc-embassy/Cargo.toml
+        run: cargo build --release --manifest-path coproc-embassy/Cargo.toml --target thumbv6m-none-eabi
