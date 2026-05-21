@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["coproc-common", "pi-pico-rgb"]
+members = ["coproc-common", "app"]
 
 [workspace.package]
 edition = "2024"

@@ -877,24 +877,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 
 [[package]]
-name = "megabit-coproc-common"
-version = "0.1.0"
-dependencies = [
- "cobs",
- "cortex-m",
- "embassy-executor",
- "embassy-futures",
- "embassy-sync 0.5.0",
- "embassy-time",
- "embassy-usb",
- "embassy-usb-driver",
- "embedded-hal 1.0.0",
- "embedded-hal-async",
- "static_cell",
-]
-
-[[package]]
-name = "megabit-coproc-pi-pico-rgb"
+name = "megabit-coproc-app"
 version = "0.1.0"
 dependencies = [
  "cortex-m",
@@ -910,6 +893,23 @@ dependencies = [
  "megabit-coproc-common",
  "panic-probe",
  "portable-atomic",
+ "static_cell",
+]
+
+[[package]]
+name = "megabit-coproc-common"
+version = "0.1.0"
+dependencies = [
+ "cobs",
+ "cortex-m",
+ "embassy-executor",
+ "embassy-futures",
+ "embassy-sync 0.5.0",
+ "embassy-time",
+ "embassy-usb",
+ "embassy-usb-driver",
+ "embedded-hal 1.0.0",
+ "embedded-hal-async",
  "static_cell",
 ]
 

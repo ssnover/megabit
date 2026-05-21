@@ -1,5 +1,5 @@
 [package]
-name = "megabit-coproc-pi-pico-rgb"
+name = "megabit-coproc-app"
 version = "0.1.0"
 license.workspace = true
 edition.workspace = true
