@@ -1,6 +1,9 @@
 MEMORY {
-    BOOT2 : ORIGIN = 0x10000000, LENGTH = 0x100
-    FLASH : ORIGIN = 0x10000100, LENGTH = 2048K - 0x100
+    ROM (rx) : ORIGIN = 0x00000000, LENGTH = 16K
+
+    FLASH_BOOT (rx) : ORIGIN = 0x10000000, LENGTH = 32K
+    FLASH_APP  (rx) : ORIGIN = 0x10008000, LENGTH = 992K + 992K
+    NVS        (rw) : ORIGIN = 0x101f8000, LENGTH = 32K
 
     /* Pick one of the two options for RAM layout     */
 
