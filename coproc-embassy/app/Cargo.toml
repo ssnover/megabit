@@ -6,7 +6,7 @@ edition.workspace = true
 
 [dependencies]
 cortex-m.workspace = true
-cortex-m-rt = "0.7.0"
+cortex-m-rt.workspace = true
 defmt.workspace = true
 defmt-rtt.workspace = true
 embassy-executor = { workspace = true, features = ["defmt"] }
@@ -27,6 +27,9 @@ megabit-coproc-common = { workspace = true, features = ["defmt"] }
 panic-probe = { version = "0.3", features = ["print-defmt"] }
 portable-atomic = { version = "1.5", features = ["critical-section"] }
 static_cell.workspace = true
+
+[build-dependencies]
+coproc-build-utils.workspace = true
 
 [lints]
 clippy.type_complexity = "allow"

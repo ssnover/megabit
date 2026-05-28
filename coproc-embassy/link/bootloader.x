@@ -125,6 +125,17 @@ SECTIONS {
     } > FLASH_BOOT
 
     /* ## Sections in RAM */
+    /* ### .time_critical */
+    __time_critical_source = LOADADDR(.time_critical);
+    .time_critical : ALIGN(4)
+    {
+        . = ALIGN(4);
+        __time_critical_start = .;
+        *(.time_critical .time_critical.*);
+        . = ALIGN(4);
+    } > RAM AT>FLASH_BOOT
+    __time_critical_end = .;
+
     /* ### .data */
     .data : ALIGN(4)
     {
