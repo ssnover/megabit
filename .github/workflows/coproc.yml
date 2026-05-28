@@ -20,7 +20,7 @@ jobs:
         with:
           components: rustfmt
       - name: Format Pico
-        run: cargo fmt --all --check --manifest-path coproc-embassy/pi-pico-rgb/Cargo.toml
+        run: cargo fmt --all --check --manifest-path coproc-embassy/Cargo.toml
   
   build:
     name: Build firmwares

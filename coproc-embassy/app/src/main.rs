@@ -38,23 +38,23 @@ use panic_probe as _;
 use static_cell::StaticCell;
 
 type DisplayDriver = WaveshareDriver<
-        (
-            Output<'static, PIN_0>,
-            Output<'static, PIN_1>,
-            Output<'static, PIN_8>,
-            Output<'static, PIN_2>,
-            Output<'static, PIN_3>,
-            Output<'static, PIN_9>,
-            Output<'static, PIN_4>,
-            Output<'static, PIN_10>,
-            Output<'static, PIN_5>,
-            Output<'static, PIN_11>,
-            Output<'static, PIN_6>,
-            Output<'static, PIN_12>,
-            Output<'static, PIN_7>,
-        ),
-        CriticalSectionRawMutex,
-    >;
+    (
+        Output<'static, PIN_0>,
+        Output<'static, PIN_1>,
+        Output<'static, PIN_8>,
+        Output<'static, PIN_2>,
+        Output<'static, PIN_3>,
+        Output<'static, PIN_9>,
+        Output<'static, PIN_4>,
+        Output<'static, PIN_10>,
+        Output<'static, PIN_5>,
+        Output<'static, PIN_11>,
+        Output<'static, PIN_6>,
+        Output<'static, PIN_12>,
+        Output<'static, PIN_7>,
+    ),
+    CriticalSectionRawMutex,
+>;
 type UsbDriver = usb::Driver<'static, peripherals::USB>;
 
 const DEFAULT_MONO_COLOR: (u8, u8, u8) = (0xff, 00, 00);
@@ -217,10 +217,7 @@ async fn core0_task(
 
 // todo: That generic parameter on Output for the PIN is going away at some point
 #[embassy_executor::task]
-async fn core1_task(
-    mut waveshare: DisplayDriver,
-    mut debug_pin: Output<'static, PIN_21>,
-) {
+async fn core1_task(mut waveshare: DisplayDriver, mut debug_pin: Output<'static, PIN_21>) {
     loop {
         embassy_time::Timer::after_micros(500).await;
         waveshare.render(&mut debug_pin).await;

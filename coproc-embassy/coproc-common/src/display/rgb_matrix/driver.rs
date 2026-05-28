@@ -156,9 +156,7 @@ impl<PINS: DriverPins, M: RawMutex + 'static> WaveshareDriver<PINS, M> {
         for pwm_step in 0..(1u8 << 4) {
             let pwm_step = pwm_step << 1;
             for row in 0..(ROWS / 2) {
-                for idx in ((row * COLUMNS)..((row + 1) * COLUMNS))
-                    .step_by(16)
-                {
+                for idx in ((row * COLUMNS)..((row + 1) * COLUMNS)).step_by(16) {
                     for idx_add in 0..16 {
                         let idx = idx + idx_add;
                         let idx2 = idx + pixel_data.len() / 2;

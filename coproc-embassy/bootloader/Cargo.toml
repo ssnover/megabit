@@ -1,0 +1,19 @@
+[package]
+name = "bootloader"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+bootload.workspace = true
+cortex-m.workspace = true
+cortex-m-rt.workspace = true
+crc32.workspace = true
+memory.workspace = true
+panic-halt = "1.0"
+rp-pac.workspace = true
+rp2040-hal.workspace = true
+rw-flash = { workspace = true, features = ["hw"] }
+
+[build-dependencies]
+coproc-build-utils.workspace = true
