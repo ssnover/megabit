@@ -7,7 +7,7 @@ members = [
     "serial-protocol",
     "simulator/backend",
     "simulator/sim_msgs",
-    "utils/megabit-utils",
+    "utils/*",
 ]
 exclude = [
     "app-sdk",
