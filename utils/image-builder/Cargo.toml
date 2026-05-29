@@ -1,0 +1,10 @@
+[package]
+name = "image-builder"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+crc32.workspace = true
+memory.workspace = true
+rw-flash = { workspace = true, features = ["with-std"] }
