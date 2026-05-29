@@ -8,6 +8,7 @@ members = [
     "lib/memory",
     "lib/rw-flash",
     "lib/bootload",
+    "lib/pico-flash",
 ]
 
 [workspace.package]
@@ -37,6 +38,7 @@ static_cell = "2"
 bootload = { path = "lib/bootload" }
 crc32 = { path = "lib/crc32" }
 memory = { path = "lib/memory" }
+pico-flash = { path = "lib/pico-flash" }
 rw-flash = { path = "lib/rw-flash" }
 
 coproc-build-utils = { path = "../utils/coproc-build-utils" }

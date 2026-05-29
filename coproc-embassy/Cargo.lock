@@ -148,6 +148,7 @@ dependencies = [
  "crc32",
  "memory",
  "panic-halt",
+ "pico-flash",
  "rp-pac 7.0.0",
  "rp2040-hal",
  "rw-flash",
@@ -1312,6 +1313,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5be167a7af36ee22fe3115051bc51f6e6c7054c9348e28deb4f49bd6f705a315"
 
 [[package]]
+name = "pico-flash"
+version = "0.1.0"
+dependencies = [
+ "cortex-m",
+ "memory",
+ "rp2040-hal",
+ "rw-flash",
+]
+
+[[package]]
 name = "pin-project-lite"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1677,10 +1688,8 @@ checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
 name = "rw-flash"
 version = "0.1.0"
 dependencies = [
- "cortex-m",
  "crc32",
  "memory",
- "rp2040-hal",
 ]
 
 [[package]]

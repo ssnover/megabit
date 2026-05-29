@@ -11,9 +11,10 @@ cortex-m-rt.workspace = true
 crc32.workspace = true
 memory.workspace = true
 panic-halt = "1.0"
+pico-flash.workspace = true
 rp-pac.workspace = true
 rp2040-hal.workspace = true
-rw-flash = { workspace = true, features = ["hw"] }
+rw-flash.workspace = true
 
 [build-dependencies]
 coproc-build-utils.workspace = true

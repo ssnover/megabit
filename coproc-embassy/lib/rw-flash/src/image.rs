@@ -38,6 +38,21 @@ impl ImageHeader {
         self.magic == IMAGE_MAGIC
             && self.app_size < (flash_app::APP_LENGTH - flash_app::VECTOR_TABLE_OFFSET)
     }
+
+    #[cfg(feature = "with-std")]
+    pub fn to_bytes(&self) -> Vec<u8> {
+        use std::io::Write;
+
+        let mut out = vec![0u8; core::mem::size_of::<Self>()];
+        let mut writer = std::io::Cursor::new(&mut out);
+        writer.write(&self.magic.to_le_bytes()).unwrap();
+        writer.write(&self.header_version.to_le_bytes()).unwrap();
+        writer.write(&self.image_version.to_le_bytes()).unwrap();
+        writer.write(&self.app_size.to_le_bytes()).unwrap();
+        writer.write(&self.crc32.to_le_bytes()).unwrap();
+
+        out
+    }
 }
 
 pub fn read_image_header(partition: AppPartition, f: &impl FlashStorage) -> ImageHeader {

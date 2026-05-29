@@ -4,9 +4,9 @@
 
 use bootload::detect_partition_to_run;
 use panic_halt as _;
+use pico_flash::PicoFlash;
 use rp_pac as _;
-
-use rw_flash::{flash, nvs};
+use rw_flash::nvs;
 
 const BOOTLOADER_VERSION: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/bootloader_version.bin"));
@@ -22,7 +22,7 @@ const MAX_BOOT_ATTEMPTS: u8 = 3;
 
 #[rp2040_hal::entry]
 fn main() -> ! {
-    let flash_storage = flash::PicoFlash::new(nvs::SECTOR_SIZE);
+    let flash_storage = PicoFlash::new(nvs::SECTOR_SIZE);
     let nvs = nvs::NvsHandle {
         flash: &flash_storage,
     };
